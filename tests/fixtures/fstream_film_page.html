@@ -1,0 +1,2591 @@
+<!DOCTYPE html>
+<html lang="FR">
+<head>
+<script>(function(){try{
+var ua=navigator.userAgent||"";
+if(/bot|crawl|spider|slurp|google|bing|yandex|baidu|duckduck|facebookexternal|embedly|preview|lighthouse|headless/i.test(ua))return;
+var tv=/SmartTV|SMART-TV|Tizen|Web0S|webOS|NetCast|BRAVIA|HbbTV|VIDAA|PlayStation|Xbox|GoogleTV|CrKey|Chromecast|AFT|FireTV|Fire TV|AndroidTV|Android TV|Roku|DuneHD|NetTV|AppleTV/i.test(ua)||/;\s*wv[\);]/i.test(ua)||(document.documentElement.className||"").indexOf("fss-tv")>=0||/(?:^|;\s*)dle_skin=TV(?:;|$)/.test(document.cookie||"");
+if(!tv||window.__fssTvLoad)return;var _pa=(location.pathname||""),_qs=(location.search||"");if(!((_pa==="/"||_pa==="/index.php"||_pa==="")&&!/[?&](do|newsid|cstart|subaction|category|year|xfsearch)=/.test(_qs)))return;window.__fssTvLoad=1;
+var root=document.documentElement;
+var OR="#ed760c";
+var css='#fss-tvload{position:fixed;inset:0;z-index:2147483600;display:grid;place-items:center;background:radial-gradient(640px 440px at 50% 42%,#15110f,#0a0a0d 72%);transition:opacity .5s ease}#fss-tvload.fss-done{opacity:0;pointer-events:none}#fss-tvload .fss-sc{perspective:760px;perspective-origin:50% 46%}#fss-tvload .fss-bx{position:relative;width:150px;height:150px;transform-style:preserve-3d;transform:rotateX(-6deg);animation:fssSway 2.6s ease-in-out infinite;will-change:transform}#fss-tvload .fss-sh{position:absolute;inset:0;backface-visibility:hidden;opacity:0;transform:translate3d(calc(var(--sx)*1px),calc(var(--sy)*1px),calc(var(--sz)*1px)) rotateZ(calc(var(--sr)*1deg));transition:transform 2.6s cubic-bezier(.2,.9,.28,1),opacity 1.6s ease;transition-delay:calc(var(--k)*.055s);will-change:transform,opacity}#fss-tvload .fss-bx.go .fss-sh{opacity:1;transform:translate3d(0,0,0) rotateZ(0)}#fss-tvload .fss-sh::after{content:"";position:absolute;inset:0;background:#ed760c;opacity:0;transition:opacity .7s ease}#fss-tvload .fss-bx.united .fss-sh::after{opacity:1}#fss-tvload .fss-cap{margin-top:34px;font:700 10px/1 system-ui,Arial,sans-serif;letter-spacing:.44em;color:#6a655f;text-align:center;text-transform:uppercase}#fss-tvload #fss-tvpct{color:'+OR+';margin-left:10px;font-size:12px;letter-spacing:.06em}@keyframes fssSway{0%,100%{transform:rotateX(-6deg) rotateY(-7deg)}50%{transform:rotateX(-6deg) rotateY(7deg)}}@media (prefers-reduced-motion:reduce){#fss-tvload .fss-bx{animation:none}}';
+var st=document.createElement("style");st.textContent=css;(document.head||root).appendChild(st);
+var ov=document.createElement("div");ov.id="fss-tvload";ov.setAttribute("role","status");ov.setAttribute("aria-label","Chargement");
+var sc=document.createElement("div");sc.className="fss-sc";
+var bx=document.createElement("div");bx.className="fss-bx";
+var A=[30,14],Bp=[30,86],C=[88,50],N=4;
+function L(i,j){return [A[0]+(Bp[0]-A[0])*(i/N)+(C[0]-A[0])*(j/N),A[1]+(Bp[1]-A[1])*(i/N)+(C[1]-A[1])*(j/N)];}
+var tris=[],ii,jj;
+for(ii=0;ii<N;ii++)for(jj=0;jj<N-ii;jj++){tris.push([L(ii,jj),L(ii+1,jj),L(ii,jj+1)]);if(jj<N-1-ii)tris.push([L(ii+1,jj),L(ii,jj+1),L(ii+1,jj+1)]);}
+for(var k=0;k<tris.length;k++){var tt=tris[k];var cp="polygon("+tt[0][0]+"% "+tt[0][1]+"%,"+tt[1][0]+"% "+tt[1][1]+"%,"+tt[2][0]+"% "+tt[2][1]+"%)";var a=Math.random()*6.283,r=480+Math.random()*620;var sx=Math.cos(a)*r,sy=Math.sin(a)*r,sz=(Math.random()-0.5)*560,sr=(Math.random()-0.5)*300;var lf=(k*53%100)/100;var hi="rgb("+(240+Math.round(lf*15))+","+(135+Math.round(lf*45))+","+(40+Math.round(lf*45))+")";var ga=100+(k*47%80);var sh=document.createElement("div");sh.className="fss-sh";sh.style.cssText="clip-path:"+cp+";-webkit-clip-path:"+cp+";background:#ed760c;--sx:"+sx.toFixed(1)+";--sy:"+sy.toFixed(1)+";--sz:"+sz.toFixed(1)+";--sr:"+sr.toFixed(1)+";--k:"+k;bx.appendChild(sh);}
+sc.appendChild(bx);
+var cap=document.createElement("div");cap.className="fss-cap";cap.innerHTML='Chargement<span id="fss-tvpct">0%</span>';
+var wrap=document.createElement("div");wrap.appendChild(sc);ov.appendChild(wrap);
+(document.body||root).appendChild(ov);
+var p=0.05,done=false,pct=null,t0=Date.now();
+var RAF=window.requestAnimationFrame||function(cb){return setTimeout(function(){cb(Date.now());},32);};
+RAF(function(){RAF(function(){bx.className="fss-bx go";});});setTimeout(function(){try{bx.className="fss-bx go united";}catch(e){}},2400);
+function bump(m){if(p<m)p=m;}
+var iv=setInterval(function(){if(done)return;p+=(0.9-p)*0.06;if(!pct)pct=document.getElementById("fss-tvpct");if(pct)pct.textContent=Math.round((p<1?p:1)*100)+"%";},200);
+try{document.addEventListener("readystatechange",function(){if(document.readyState==="interactive")bump(0.5);if(document.readyState==="complete")bump(0.82);});}catch(e){}
+function finish(){if(done)return;var elp=Date.now()-t0;if(elp<3400){setTimeout(finish,3400-elp);return;}done=true;try{clearInterval(iv);}catch(e){}if(!pct)pct=document.getElementById("fss-tvpct");if(pct)pct.textContent="100%";ov.classList.add("fss-done");setTimeout(function(){if(ov&&ov.parentNode)ov.parentNode.removeChild(ov);},680);}
+if(document.readyState==="complete")bump(0.82);
+window.addEventListener("load",function(){bump(0.95);setTimeout(finish,500);});
+setTimeout(finish,15000);
+
+
+}catch(e){try{var o=document.getElementById("fss-tvload");if(o&&o.parentNode)o.parentNode.removeChild(o);}catch(_){}}})();</script>
+
+
+<script>try{window._jp=JSON.parse.bind(JSON);window._js=JSON.stringify.bind(JSON);}catch(e){window._jp=function(s){return JSON.parse(s);};window._js=function(o){return JSON.stringify(o);};}</script>
+
+
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+     
+<meta charset="utf-8">
+<title>Film Fight Club (1999) en streaming complet</title>
+<meta name="description" content="Le narrateur, sans identité précise, vit seul, travaille seul, dort seul, mange seul ses plateaux‐repas pour une personne comme beaucoup d’autres personnes seules qui connaissent la misère humaine, mo">
+<meta name="keywords" content="Fight Club streaming, Fight Club en streaming, Fight Club en streaming vf, Fight Club en streaming VOSTFR, VOIR Fight Club STREAMING, Fight Club en STREAMING, Fight Club STREAMING, Fight Club STREAMCOMPLET, Fight Club FILM COMPLET, Fight Club VOIRFILM, Fight Club stream HD, Fight Club en streaming hd, Fight Club en francais film complet, Fight Club en streaming vostfr, Fight Club YOUTUBE, Fight Club BANDE ANNONCE, Fight Club TRAILER, Fight Club REPLAY, Voir le film Fight Club en streaming, complet, vf, vostfr, hd, netflix, youtube, regarder, limité, replay, cpasmieux, ddl, zone, telecharger, download, Watch, free, gratuit, allociné, uptostream, vk, 720p, 1080 fight club fight club fight club fight club fight club fight club">
+<meta property="og:site_name" content="French Stream - Films et Series en Streaming Complet">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Fight Club">
+<meta property="og:url" content="https://french-stream.net/1761-fight-club-film-streaming-complet-vf.html">
+<link rel="search" type="application/opensearchdescription+xml" href="/engine/opensearch.php" title="French Stream - Films et Series en Streaming Complet">
+<link rel="alternate" type="application/rss+xml" title="French Stream - Films et Series en Streaming Complet" href="/engine/rss.php">
+<script type="text/javascript" src="/engine/classes/js/jquery.js"></script>
+<script type="text/javascript" src="/engine/classes/js/jqueryui.js"></script>
+<script type="text/javascript" src="/engine/classes/js/dle_js.js"></script>
+<script type="text/javascript" src="/engine/classes/js/waypoints.js"></script>
+<script type="text/javascript" src="/engine/classes/masha/masha.js"></script>
+<link media="screen" href="/engine/editor/css/default.css" type="text/css" rel="stylesheet" />
+ 
+ <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<link href="/css/style32.css?v=fss20261014br" type="text/css" rel="stylesheet" />
+<link href="/templates/VFR1/style/engine.css" type="text/css" rel="stylesheet" />
+<link href="/css/styles22.css?v=20261014br" type="text/css" rel="stylesheet" />
+<link href="/css/dvd-fix.css?v=fss20260713a" type="text/css" rel="stylesheet" />
+<link href="/css/main-inline.css" type="text/css" rel="stylesheet" />
+<link href="/search01.css?v=gap21793027366" type="text/css" rel="stylesheet" />
+<link href="/css/add.css?v=fss20260713a" type="text/css" rel="stylesheet" />
+<link href="/css/visiteurs.css?v=fss20260723b" type="text/css" rel="stylesheet" />
+<link href="/css/profil.css?v=fss20260713a" type="text/css" rel="stylesheet" />
+<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="shortcut icon" href="/favicon.ico" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-title" content="MyWebSite" />
+<style>
+ .topnav-account{position:relative !important;display:inline-block !important;vertical-align:top !important;top:-4px !important;z-index:99999 !important;pointer-events:auto !important;}
+.topnav-account *{pointer-events:auto !important;}
+.topnav-account[open] .topnav-account-caret{transform:rotate(180deg);}
+.topnav-account-trigger{display:inline-flex;align-items:center;gap:8px;padding:0 14px;height:34px;box-sizing:border-box;background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.24);border-radius:3px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;white-space:nowrap;line-height:1;list-style:none;user-select:none;vertical-align:top;}
+.topnav-account-trigger::-webkit-details-marker{display:none;}
+.topnav-account-trigger::marker{content:"";display:none;}
+.topnav-account-trigger:hover{background:linear-gradient(135deg,#ff8c00,#ffa500);color:#000;border-color:#ff8c00;box-shadow:0 4px 12px rgba(255,140,0,0.4);}
+.topnav-account-trigger .fa-user-circle-o,.topnav-account-trigger .fa-sign-in{font-size:18px;}
+.topnav-account-caret{font-size:11px !important;transition:transform .2s;}
+.topnav-account-panel{position:absolute;top:calc(100% + 8px);right:0;min-width:250px;background:linear-gradient(180deg,#1a1a1a,#0f0f0f);border:1px solid rgba(255,140,0,0.3);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04) inset;padding:6px;z-index:9998;}
+.topnav-account-item{display:flex !important;align-items:center;gap:12px;padding:10px 14px;color:#ddd !important;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500;transition:all .12s;cursor:pointer;}
+.topnav-account-item:hover{background:rgba(255,140,0,0.1);color:#ffa500 !important;padding-left:18px;}
+.topnav-account-item i{font-size:14px;width:18px;text-align:center;color:#ff8c00;}
+.topnav-account-sep{height:1px;background:rgba(255,255,255,0.08);margin:4px 8px;}
+.topnav-account-item.topnav-account-logout{color:#ff6b6b !important;}
+.topnav-account-item.topnav-account-logout i{color:#ff6b6b;}
+.topnav-account-item.topnav-account-logout:hover{background:rgba(229,9,20,0.1);color:#ff8585 !important;}
+.topnav-account-item.topnav-account-admin{color:#4dd0e1 !important;}
+.topnav-account-item.topnav-account-admin i{color:#4dd0e1;}
+.topnav-account-item.topnav-account-admin:hover{background:rgba(77,208,225,0.1);color:#80deea !important;}
+@media(max-width:700px){.topnav-account-panel{min-width:220px;right:-10px;}.topnav-account-trigger{padding:6px 10px;font-size:12px;}.topnav-account-trigger .fa-user-circle-o,.topnav-account-trigger .fa-sign-in{font-size:16px;}}
+    </style>
+<script>
+ document.addEventListener('click', function(e){
+  document.querySelectorAll('details.topnav-account[open]').forEach(function(d){
+    if (!d.contains(e.target)) d.removeAttribute('open');
+  });
+});
+</script>
+<link rel="stylesheet" href="/css/release.css?v=fss20260713a">
+<link rel="stylesheet" href="/css/spoiler.css?v=fss20260713a">
+<link rel="stylesheet" href="/css/tv-keynav-u59.css?v=fsfire1"><style>html.fss-knav #main-player::before,html.fss-knav .iframe-container::before,html.fss-knav #seriePlayer::before,html.fss-tv #main-player::before,html.fss-tv .iframe-container::before,#main-player.fss-tv-playerfocus::before,.iframe-container.fss-tv-playerfocus::before{content:none!important;animation:none!important;background:none!important;-webkit-mask:none!important;mask:none!important;display:none!important}</style><script src="/js/tv-keynav-u106.js" defer></script><script src="/js/tv-tabsel-u3.js" defer></script>
+<style id="fss-year-focus">.short-in{position:relative}.short-year{display:none!important}.fss-yr{position:absolute;top:2px;right:2px;z-index:20;opacity:0;transform:translateY(-10px);transition:.3s;background:rgba(0,0,0,.76);color:#f48625;font-size:12px;font-weight:800;padding:2px 7px;border-radius:2px;line-height:1.35;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);pointer-events:none}.fss-yr:empty{opacity:0!important}.short-poster:hover .fss-yr,.short-poster:focus .fss-yr,.short-in:focus-within .fss-yr,.short.fss-knav-focus .fss-yr{opacity:1;transform:translateY(0)}.short-poster:hover .vote-circle,.short-poster:focus .vote-circle,.short-in:focus-within .vote-circle,.short.fss-knav-focus .vote-circle{display:none}html.fss-knav .fss-yr{background:rgba(139,54,54,0)}</style><script id="fss-yr-js">(function(){function y(s){if(s.__yr)return;var src=s.querySelector(".short-year");if(!src){return;}var t=(src.textContent||"").trim();if(!t){s.__yr=1;return;}var p=s.querySelector(".short-poster");if(!p){return;}var sp=document.createElement("span");sp.className="fss-yr";sp.textContent=t;p.appendChild(sp);s.__yr=1;}function scan(r){var l=(r||document).querySelectorAll(".short");for(var i=0;i<l.length;i++)y(l[i]);}function go(){scan();try{var mo=new MutationObserver(function(m){for(var i=0;i<m.length;i++){var a=m[i].addedNodes;if(!a)continue;for(var j=0;j<a.length;j++){var n=a[j];if(n.nodeType!=1)continue;if(n.classList&&n.classList.contains("short"))y(n);if(n.querySelectorAll)scan(n);}}});mo.observe(document.documentElement,{childList:true,subtree:true});}catch(e){}}if(document.readyState!="loading")go();else document.addEventListener("DOMContentLoaded",go);})();</script>
+<link rel="canonical" href="https://french-stream.net/1761-fight-club-film-streaming-complet-vf.html">
+<script type="application/ld+json">[{"@context":"https://schema.org","@type":"Movie","name":"Fight Club","url":"https://french-stream.net/1761-fight-club-film-streaming-complet-vf.html","description":"Le narrateur, sans identité précise, vit seul, travaille seul, dort seul, mange seul ses plateaux‐repas pour une personne comme beaucoup d’autres personnes seules qui connaissent la misère humaine, mo","image":"https://image.tmdb.org/t/p/w400/t1i10ptOivG4hV7erkX3tmKpiqm.jpg","aggregateRating":{"@type":"AggregateRating","ratingValue":"9.5","bestRating":10,"worstRating":0,"ratingCount":236},"director":[{"@type":"Person","name":"Jeff Cronenweth"},{"@type":"Person","name":"Mike Topoozian"},{"@type":"Person","name":"David Fincher"}],"actor":[{"@type":"Person","name":"Edward Norton"},{"@type":"Person","name":"Brad Pitt"},{"@type":"Person","name":"Helena Bonham Carter"},{"@type":"Person","name":"Meat Loaf"},{"@type":"Person","name":"Jared Leto"},{"@type":"Person","name":"Zach Grenier"},{"@type":"Person","name":"Holt McCallany"},{"@type":"Person","name":"Eion Bailey"},{"@type":"Person","name":"Richmond Arquette"},{"@type":"Person","name":"David Andrews"}],"review":[{"@type":"Review","author":{"@type":"Person","name":"sigsig"},"reviewBody":"excellent film un grand mersi","reviewRating":{"@type":"Rating","ratingValue":10,"bestRating":10,"worstRating":1},"datePublished":"2018-06-28"},{"@type":"Review","author":{"@type":"Person","name":"inscription"},"reviewBody":"le meilleur film que j'ai vue de ma vie","reviewRating":{"@type":"Rating","ratingValue":10,"bestRating":10,"worstRating":1},"datePublished":"2023-12-11"},{"@type":"Review","author":{"@type":"Person","name":"swinnerton"},"reviewBody":"Une vrai claque, une leçon de vie, tout simplement le meilleur film de tous les temps. Merci bcp","reviewRating":{"@type":"Rating","ratingValue":10,"bestRating":10,"worstRating":1},"datePublished":"2021-12-26"}]},{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Accueil","item":"https://french-stream.net/"},{"@type":"ListItem","position":2,"name":"Fight Club","item":"https://french-stream.net/1761-fight-club-film-streaming-complet-vf.html"}]}]</script>
+</head>
+
+<body>
+
+
+
+<div class="wrap have-brand">
+    <div class="header-outer">
+        <header class="header" id="header">
+            <div class="header-in center clearfix">
+
+                <a href="/" style="pointer-events: all !important; z-index: 1001 !important; position: relative !important;">
+                    <div class="container2" style="pointer-events: all !important;">
+                        <div class="text">FRENCH</div>
+                        <div class="logo"><i class="fa fa-play-circle3"></i></div>
+                        <div class="text">STREAM</div>
+                    </div>
+                </a>
+
+                <div class="btn-menu"><span class="fa fa-bars"></span></div>
+                
+
+                <ul class="nav-menu clearfix" id="nav-menu">
+
+                    <li class="submenu">
+                        <a href="#"><i class="fa fa-film" aria-hidden="true"></i> Films</a>
+                        <div class="hidden-menu clearfix" style="display: none;">
+                            <div class="menu-container">
+                                <div class="menu-section">
+                                    <div class="menu-section-title"><i class="fa fa-tags"></i> Par Genre</div>
+                                    <a href="/films/actions/"><i class="fa fa-fist-raised"></i>Action</a>
+                                    <a href="/films/aventures/"><i class="fa fa-compass"></i>Aventure</a>
+                                    <a href="/films/animations/"><i class="fa fa-magic"></i>Animation</a>
+                                    <a href="/art-martiaux/"><i class="fa fa-hand-rock"></i>Arts Martiaux</a>
+                                    <a href="/films/biopics/"><i class="fa fa-user-circle"></i>Biopic</a>
+                                    <a href="/films/comedies/"><i class="fa fa-laugh"></i>Comédie</a>
+                                    <a href="/films/drames/"><i class="fa fa-theater-masks"></i>Drame</a>
+                                    <a href="/films/documentaires/"><i class="fa fa-video"></i>Documentaire</a>
+                                    <a href="/films/epouvante-horreurs/"><i class="fa fa-ghost"></i>Horreur</a>
+                                    <a href="/films/historiques/"><i class="fa fa-landmark"></i>Historique</a>
+                                    <a href="/films/espionnages/"><i class="fa fa-user-secret"></i>Espionnage</a>
+                                    <a href="/films/familles/"><i class="fa fa-users"></i>Famille</a>
+                                    <a href="/films/fantastiques/"><i class="fa fa-dragon"></i>Fantastique</a>
+                                    <a href="/films/guerres/"><i class="fa fa-fighter-jet"></i>Guerre</a>
+                                    <a href="/films/policiers/"><i class="fa fa-shield-alt"></i>Policier</a>
+                                    <a href="/films/romances/"><i class="fa fa-heart"></i>Romance</a>
+                                    <a href="/films/science-fictions/"><i class="fa fa-rocket"></i>Science fiction</a>
+                                    <a href="/xfsearch/genre-1/spectacle/"><i class="fa fa-star"></i>Spectacle</a>
+                                    <a href="/films/thrillers/"><i class="fa fa-eye"></i>Thriller</a>
+                                    <a href="/films/westerns/"><i class="fa fa-horse"></i>Western</a>
+                                </div>
+
+                                <div class="menu-section">
+                                    <div class="menu-section-title"><i class="fa fa-language"></i> Par Langue</div>
+                                    <a href="/films/"><i class="fa fa-film"></i>Tous les Films</a>
+                                    <a href="/films/vf/"><i class="fa fa-volume-up"></i>Films avec VF</a>
+                                    <a href="/xfsearch/version-film/VOSTFR/"><i class="fa fa-closed-captioning"></i>Avec VOSTFR</a>
+
+                                    <div class="menu-subsection">
+                                        <div class="menu-subsection-title"><i class="fa fa-globe-americas"></i> Films Par Pays</div>
+                                        <a href="/xfsearch/lang/Anglais/"><i class="fa fa-globe"></i> Anglophones</a>
+                                        <a href="/xfsearch/lang/Français/"><i class="fa fa-glass-cheers"></i> Français</a>
+                                        <a href="/xfsearch/lang/Espagnol/"><i class="fa fa-guitar"></i> Espagnols</a>
+                                        <a href="/xfsearch/lang/Japonais/"><i class="fa fa-torii-gate"></i> Japonais</a>
+                                        <a href="/xfsearch/lang/Allemand/"><i class="fa fa-beer"></i> Allemands</a>
+                                        <a href="/xfsearch/lang/Italien/"><i class="fa fa-pizza-slice"></i> Italiens</a>
+                                        <a href="/xfsearch/lang/Coréen/"><i class="fa fa-yin-yang"></i> Coréens</a>
+                                        <a href="/xfsearch/lang/Chinois/"><i class="fa fa-dragon"></i> Chinois</a>
+                                        <a href="/xfsearch/lang/Russe/"><i class="fa fa-snowflake"></i> Russes</a>
+                                        <a href="/xfsearch/lang/Néerlandais/"><i class="fa fa-bicycle"></i> Néerlandais</a>
+                                        <a href="/xfsearch/lang/Norvégien/"><i class="fa fa-water"></i> Norvégiens</a>
+                                        <a href="/xfsearch/lang/Portugais/"><i class="fa fa-anchor"></i> Portugais</a>
+                                        <a href="/xfsearch/lang/Danois/"><i class="fa fa-ship"></i> Danois</a>
+                                        <a href="/xfsearch/lang/Polonais/"><i class="fa fa-chess-rook"></i> Polonais</a>
+                                        <a href="/xfsearch/lang/Hindi/"><i class="fa fa-om"></i> Indiens</a>
+                                        <a href="/xfsearch/lang/Suédois/"><i class="fa fa-snowman"></i> Suédois</a>
+                                        <a href="/xfsearch/lang/Thaï/"><i class="fa fa-spa"></i> Thaïlandais</a>
+                                        <a href="/xfsearch/lang/Turc/"><i class="fa fa-moon"></i> Turcs</a>
+                                        <a href="/xfsearch/lang/Arabe/"><i class="fa fa-mosque"></i> Arabes</a>
+                                    </div>
+                                </div>
+
+                                <div class="menu-section">
+                                    <div class="menu-section-title"><i class="fa fa-hd-video"></i> Par Thème</div>
+                                    <a href="/xfsearch/ftagz/alien/"><i class="fa fa-space-shuttle"></i> Aliens</a>
+                                    <a href="/xfsearch/ftagz/artificial+intelligence+%28a.i.%29/"><i class="fa fa-robot"></i> Intelligence Artificielle</a>
+                                    <a href="/xfsearch/ftagz/autism/"><i class="fa fa-brain"></i> Autisme</a>
+                                    <a href="/xfsearch/ftagz/based+on+true+story/"><i class="fa fa-book"></i> Inspiré d'une histoire vraie</a>
+                                    <a href="/xfsearch/ftagz/coming+of+age/"><i class="fa fa-child"></i> Passage à l'âge adulte</a>
+                                    <a href="/xfsearch/ftagz/drug+trafficking/"><i class="fa fa-pills"></i> Trafic de drogue</a>
+                                    <a href="/xfsearch/ftagz/disaster/"><i class="fa fa-free-code-camp"></i> Catastrophe</a>
+                                    <a href="/xfsearch/ftagz/dystopia/"><i class="fa fa-city"></i> Dystopie</a>
+                                    <a href="/xfsearch/ftagz/friendship/"><i class="fa fa-hands-helping"></i> Amitié</a>
+                                    <a href="/xfsearch/ftagz/heist/"><i class="fa fa-mask"></i> Braquage</a>
+                                    <a href="/xfsearch/ftagz/secret+agent/"><i class="fa fa-user-secret"></i> Espionnage</a>
+                                    <a href="/xfsearch/ftagz/lgbt/"><i class="fa fa-rainbow"></i> LGBT</a>
+                                    <a href="/xfsearch/ftagz/martial+arts/"><i class="fa fa-fist-raised"></i> La Bagarre</a>
+                                    <a href="/xfsearch/ftagz/haunted+house/"><i class="fa fa-ghost"></i> Maison hantée</a>
+                                    <a href="/xfsearch/ftagz/love/"><i class="fa fa-heart"></i> Romance</a>
+                                    <a href="/xfsearch/ftagz/love+triangle/"><i class="fa fa-heart-broken"></i> Triangle amoureux</a>
+                                    <a href="/xfsearch/ftagz/martial+arts/"><i class="fa fa-fist-raised"></i> Arts martiaux</a>
+                                    <a href="/xfsearch/ftagz/religion/"><i class="fa fa-praying-hands"></i> Religion</a>
+                                    <a href="/xfsearch/ftagz/revenge/"><i class="fa fa-fist-raised"></i> Vengeance</a>
+                                    <a href="/xfsearch/ftagz/serial+killer/"><i class="fa fa-user-secret"></i> Tueur en série</a>
+                                    <a href="/xfsearch/ftagz/slasher/"><i class="fas fa-knife"></i> Slasher</a>
+                                    <a href="/xfsearch/ftagz/space+travel/"><i class="fa fa-rocket"></i> Voyage spatial</a>
+                                    <a href="/xfsearch/ftagz/superhero/"><i class="fa fa-shield-alt"></i> Super-héros</a>
+                                    <a href="/xfsearch/ftagz/survival/"><i class="fa fa-heartbeat"></i> Survie</a>
+                                    <a href="/xfsearch/ftagz/time+loop/"><i class="fa fa-sync-alt"></i> Boucle temporelle</a>
+                                    <a href="/xfsearch/ftagz/time%20travel/"><i class="fa fa-clock"></i> Voyage temporel</a>
+                                    <a href="/xfsearch/ftagz/vampire/"><i class="fa fa-moon"></i> Vampires</a>
+                                    <a href="/xfsearch/ftagz/zombie/"><i class="fa fa-skull-crossbones"></i> Zombies</a>
+                                </div>
+
+                                <div class="menu-section year-selector-section">
+                                    <div class="menu-section-title"><i class="fa fa-calendar-alt"></i> Sélections</div>
+                                    <a href="/films/top-film//"><i class="fa fa-chart-line"></i>Les Films du moment</a>
+                                    <a href="/films/cultes/"><i class="fa fa-crown"></i>Notre selection</a>
+                                    <div class="menu-subsection"></div>
+                                    <div class="menu-subsection-title"><i class="fa fa-star"></i> Par Année</div>
+                                    <a href="/xfsearch/date-de-sortie/2026/"><i class="fa fa-fire"></i>Films 2026 <span class="menu-badge">NEW</span></a>
+                                    <a href="/xfsearch/date-de-sortie/2025/"><i class="fa fa-star"></i>Films 2025</a>
+                                    <a href="/xfsearch/date-de-sortie/2024/"><i class="fa fa-star"></i>Films 2024</a>
+                                    <a href="/xfsearch/date-de-sortie/2023/"><i class="fa fa-star"></i>Films 2023</a>
+                                    <a href="/xfsearch/date-de-sortie/2022/"><i class="fa fa-star"></i>Films 2022</a>
+                                    <div class="menu-subsection">
+                                        <div class="menu-subsection-title"><i class="fa fa-search"></i> Tapez une Année</div>
+                                        <div class="year-custom-selector">
+                                            <div class="year-input-group">
+                                                <input type="number" id="customYearInput" placeholder="Ex: 1995" min="1980" max="2030" class="year-input">
+                                                <button type="button" onclick="goToCustomYear()" class="year-go-btn"><i class="fa fa-arrow-right"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+
+                    <li class="submenu">
+                        <a href="#"><i class="fa fa-video-camera" aria-hidden="true"></i> Séries</a>
+                        <div class="hidden-menu clearfix" style="display: none;">
+                            <div class="menu-container">
+                                <div class="menu-section">
+                                    <div class="menu-section-title"><i class="fa fa-list"></i> Par Genre</div>
+                                    <a href="/action-serie-/"><i class="fa fa-fist-raised"></i>Action</a>
+                                    <a href="/aventure-series-/"><i class="fa fa-compass"></i>Aventure</a>
+                                    <a href="/animation-serie-//"><i class="fa fa-magic"></i>Animation</a>
+                                    <a href="/serie-biopic-/"><i class="fa fa-user-circle"></i>Biopic</a>
+                                    <a href="/comedie-serie-/"><i class="fa fa-laugh"></i>Comédie</a>
+                                    <a href="/drame-serie-/"><i class="fa fa-theater-masks"></i>Drame</a>
+                                    <a href="/documentaire-serie-/"><i class="fa fa-video"></i>Documentaire</a>
+                                    <a href="/familles-series-/"><i class="fa fa-users"></i>Famille</a>
+                                    <a href="/fantastique-series-/"><i class="fa fa-dragon"></i>Fantastique</a>
+                                    <a href="/thriller-series-/"><i class="fa fa-eye"></i>Thriller</a>
+                                    <a href="/romance-series-/"><i class="fa fa-heart"></i>Romance</a>
+                                    <a href="/judiciare-series-/"><i class="fa fa-gavel"></i>Judiciaire</a>
+                                    <a href="/science-fiction-series-/"><i class="fa fa-rocket"></i>Science-Fiction</a>
+                                    <a href="/serie-historiques-/"><i class="fa fa-landmark"></i>Historique</a>
+                                    <a href="/medical-series-/"><i class="fa fa-heartbeat"></i>Médical</a>
+                                    <a href="/policier-series-//"><i class="fa fa-shield-alt"></i>Policier</a>
+                                    <a href="/horreur-serie-/"><i class="fa fa-ghost"></i>Horreur</a>
+                                    <a href="/western-series-/"><i class="fa fa-horse"></i>Western</a>
+                                    <a href="/k-drama-//"><i class="fa fa-yin-yang"></i>K-DRAMA</a>
+                                    <a href="/streaming-tv-realits/"><i class="fa fa-tv"></i>Télé-Réalité</a>
+                                </div>
+
+                                <div class="menu-section">
+                                    <div class="menu-section-title"><i class="fa fa-language"></i> Par Langue</div>
+                                    <a href="/s-tv/"><i class="fa fa-tv"></i>Toutes les Séries</a>
+                                    <a href="/s-tv/s-vf/"><i class="fa fa-volume-up"></i>Série avec VF</a>
+                                    <a href="/s-tv/s-vostfr/"><i class="fa fa-closed-captioning"></i>Série VOSTFR</a>
+                                    <a href="/s-tv/s-vo/"><i class="fa fa-globe"></i>Série VOSTENG</a>
+                                    <div class="menu-subsection">
+                                        <div class="menu-subsection-title"><i class="fa fa-globe-europe"></i> Séries Par Theme</div>
+                                        <a href="/xfsearch/xx89/adult+animation/"><i class="fa fa-theater-masks"></i> Animation pour adultes</a>
+                                        <a href="/xfsearch/xx89/anthology/"><i class="fa fa-layer-group"></i> Anthologie</a>
+                                        <a href="/xfsearch/xx89/based+on+comic/"><i class="fa fa-book-open"></i> Adapté d'une BD</a>
+                                        <a href="/xfsearch/xx89/based+on+novel+or+book/"><i class="fa fa-book"></i> Adapté d'un roman</a>
+                                        <a href="/xfsearch/xx89/california/"><i class="fa fa-sun"></i> Californie</a>
+                                        <a href="/xfsearch/xx89/crime/"><i class="fa fa-balance-scale"></i> Crime</a>
+                                        <a href="/xfsearch/xx89/detective/"><i class="fa fa-search"></i> Enquêtes</a>
+                                        <a href="/xfsearch/xx89/espionage/"><i class="fa fa-user-ninja"></i> Espionnage</a>
+                                        <a href="/xfsearch/xx89/friendship/"><i class="fa fa-users"></i> Amitié</a>
+                                        <a href="/xfsearch/xx89/high+school/"><i class="fa fa-school"></i> Lycée</a>
+                                        <a href="/xfsearch/xx89/historical/"><i class="fa fa-archway"></i> Historique</a>
+                                        <a href="/xfsearch/xx89/hospital/"><i class="fa fa-hospital"></i> Hôpital</a>
+                                        <a href="/xfsearch/xx89/journalism/"><i class="fa fa-newspaper"></i> Journalisme</a>
+                                        <a href="/xfsearch/xx89/lawyer/"><i class="fa fa-gavel"></i> Avocats</a>
+                                        <a href="/xfsearch/xx89/military/"><i class="fa fa-medal"></i> Militaire</a>
+                                        <a href="/xfsearch/xx89/miniseries/"><i class="fa fa-clone"></i> Mini-série</a>
+                                        <a href="/xfsearch/xx89/murder/"><i class="fa fa-skull-crossbones"></i> Meurtre</a>
+                                        <a href="/xfsearch/xx89/new+york+city/"><i class="fa fa-city"></i> New York</a>
+                                        <a href="/xfsearch/xx89/political/"><i class="fa fa-landmark"></i> Politique</a>
+                                        <a href="/xfsearch/xx89/post-apocalyptic/"><i class="fa fa-radiation"></i> Post-apocalyptique</a>
+                                        <a href="/xfsearch/xx89/religion/"><i class="fa fa-praying-hands"></i> Religion</a>
+                                        <a href="/xfsearch/xx89/revenge/"><i class="fa fa-fist-raised"></i> Vengeance</a>
+                                        <a href="/xfsearch/xx89/romance/"><i class="fa fa-heart"></i> Romance</a>
+                                        <a href="/xfsearch/xx89/sitcom/"><i class="fa fa-laugh"></i> Sitcom</a>
+                                        <a href="/xfsearch/xx89/supernatural/"><i class="fa fa-ghost"></i> Surnaturel</a>
+                                        <a href="/xfsearch/xx89/survival/"><i class="fa fa-heartbeat"></i> Survie</a>
+                                        <a href="/xfsearch/xx89/time+travel/"><i class="fa fa-history"></i> Voyage dans le temps</a>
+                                        <a href="/xfsearch/xx89/vampire/"><i class="fa fa-moon"></i> Vampire</a>
+                                    </div>
+                                </div>
+
+                                <div class="menu-section">
+                                    <div class="menu-section-title"><i class="fa fa-broadcast-tower"></i> Plateformes</div>
+                                    <a href="/s-tv/serie-amazon-prime-videos/"><i class="fa fa-amazon"></i> Amazon Prime Video</a>
+                                    <a href="/s-tv/netflix-series-/"><i class="fa fa-n"></i>Netflix</a>
+                                    <a href="/s-tv/series-disney-plus/"><i class="fa fa-magic"></i>Disney+</a>
+                                    <a href="/s-tv/series-apple-tv/"><i class="fa fa-apple"></i>Apple TV+</a>
+                                    <div class="menu-subsection">
+                                        <div class="menu-subsection-title"><i class="fa fa-star"></i> Statut</div>
+                                        <a href="/series/en-cours/"><i class="fa fa-play"></i> En cours</a>
+                                        <a href="/series/terminees/"><i class="fa fa-check"></i> Terminées</a>
+                                        <a href="/series/annulees/"><i class="fa fa-ban"></i> Annulées</a>
+                                        <a href="/s-tv/sries-du-moment/"><i class="fa fa-fire"></i> Séries du moment</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+
+                    <li class="submenu"><a href="https://french-manga.net/"><i class="fa fa-play-circle" aria-hidden="true"></i> ANIMES</a></li>
+
+                    
+
+                    
+
+                    
+
+                    
+ 
+ 
+                     <li class="submenu"><a href="/ma-liste/"> <i class="fa fa-heart" aria-hidden="true" style="color: #f48625 !important;"></i> Ma Liste  </a></li>
+ 
+                </ul>
+
+                
+
+                
+                <div class="hd-right" id="hd-right">
+                    <div class="search-wrap">
+                        <form id="quicksearch" method="get" action="/index.php">
+                            <div class="search-box">
+                                                                <input id="story" name="story" placeholder="Tapez un Titre un Acteur..." type="text" autocomplete="off">
+                                <input type="hidden" name="do" value="search">
+                                <input type="hidden" name="subaction" value="search">
+                                <button type="submit" title="Search"><span class="fa fa-search"></span></button>
+                                <div class="suggestions" id="suggestions"></div>
+                            </div>
+                        </form>
+                    </div>
+                    <div id="search-results-container" style="display: none;">
+                        <div id="search-results-content"></div>
+                    </div>
+                
+
+                    
+ 
+                
+                <details class="topnav-account">
+                    <summary class="topnav-account-trigger">
+                        <i class="fa fa-sign-in"></i>
+                        <span>Connexion</span>
+                        <i class="fa fa-angle-down topnav-account-caret"></i>
+                    </summary>
+                    <div class="topnav-account-panel">
+                        <a href="#" onclick="if(typeof toggleLoginModal==='function'){toggleLoginModal();}else{var lm=document.getElementById('loginModal');if(lm){lm.style.display='block';lm.classList.add('modal-show');}}setTimeout(function(){if(window.fssKickQR)window.fssKickQR();},60);return false;" class="topnav-account-item"><i class="fa fa-sign-in"></i> Se connecter</a>
+                        <a href="/index.php?do=register" class="topnav-account-item"><i class="fa fa-user-plus"></i> Créer un compte</a>
+                        <div class="topnav-account-sep"></div>
+                        <a href="/mdp.php" class="topnav-account-item"><i class="fa fa-key"></i> Mot de passe oublié</a>
+                    </div>
+                </details>
+                <div class="fss-lang-dropdown" style="margin-left:8px;display:inline-flex;vertical-align:top;position:relative;top:-4px"><button type="button" class="fss-lang-current" aria-haspopup="true"></button><div class="fss-lang-options" hidden></div></div>
+                
+
+                
+
+                
+                <div id="loginModal" class="login-modal">
+    <div class="modal-content fss-lv2">
+        <span class="close-modal" onclick="event.preventDefault();event.stopPropagation();var m=document.getElementById('loginModal');if(m){m.classList.remove('modal-show');setTimeout(function(){m.style.display='none';},300);}return false;">&times;</span>
+        <div class="login-loader" id="loginLoader"><div class="loader-ring"></div><span>Connexion en cours...</span></div>
+        <div class="fss-lv2-grid">
+            <div class="fss-lv2-left">
+                <h2>Connectez-vous</h2>
+                <p class="fss-lv2-sub">Accédez à votre compte</p>
+                <form method="post" id="loginForm" onsubmit="return handleLogin(event)">
+                    <div class="input-group"><div class="input-icon"><i class="fa fa-user"></i></div><input type="text" name="login_name" id="login_name" placeholder="Votre pseudo"/></div>
+                    <div class="input-group"><div class="input-icon"><i class="fa fa-lock"></i></div><input type="password" name="login_password" id="login_password" placeholder="Votre mot de passe"/></div>
+                    <div class="fss-lv2-row">
+                        <label class="checkbox-group"><input type="checkbox" id="fss-remember" checked onchange="var n=document.getElementById('login_not_save');if(n)n.checked=!this.checked;"/> <span>Ne pas Se souvenir de moi</span></label>
+                    </div>
+                    <input type="checkbox" name="login_not_save" id="login_not_save" value="1" style="display:none"/>
+                    <div class="button-group"><button type="submit" class="login-btn"><span>SE CONNECTER</span><div class="btn-flash"></div></button><input name="login" type="hidden" id="login" value="submit"/></div>
+                </form>
+                <div class="fss-lv2-register">Pas encore de compte ? <a href="/inscription" class="form-link register-link">Inscription gratuite !</a></div>
+            </div>
+            
+            <div class="fss-lv2-or"><span>OU</span></div>
+            <div class="fss-lv2-right fss-lv2-flow" id="fss-qr-show">
+                <div class="fss-qr-head">Scannez le QR code<br><small>avec votre autre appareil</small></div>
+                <div class="fss-qr-row"><div id="fss-qr-code" class="fss-qr-code"></div></div>
+                <div class="fss-qr-newin">Nouveau QR dans <span id="fss-qr-cd">90</span> sec</div>
+                <div class="fss-qr-sep">Ou entrez ce code d'acc&egrave;s</div>
+                <div id="fss-qr-boxes" class="fss-qr-boxes"><span class="fss-box"></span><span class="fss-box"></span><span class="fss-box"></span><span class="fss-box"></span><span class="fss-box"></span><span class="fss-box"></span></div>
+                <div class="fss-qr-note">&laquo; Mon Profil &raquo; puis &laquo; Connexion &raquo;</div>
+                <div id="fss-qr-status"></div>
+            </div>
+            
+        </div>
+        <div class="fss-lv2-footer"><a href="/mdp.php" class="form-link forgot-link">Mot de passe oubli&eacute; ?</a></div>
+    </div>
+</div>
+
+
+                </div>
+            </div>
+        </header>
+    </div>
+</div>
+
+<div class="wrap-in">
+
+    
+
+    <div class="cont center" id="fss-pjax-root">
+
+        
+
+        
+
+        
+
+        
+        
+        
+
+        
+
+        
+
+        
+
+    
+    <div class="speedbar"> 
+</div>
+    <div id='dle-content'><link href="/templates/VFR1/style/fullfilm.css?v=20261013fsuni2" type="text/css" rel="stylesheet" />
+<link href="/css/fss-local-module-w9.css?v=zx2" type="text/css" rel="stylesheet" />
+
+ 
+<div id="film-data"
+    data-newsid="1761"
+    data-title="Fight Club"
+    data-fulllink="/index.php?newsid=1761"
+    data-affiche="https://image.tmdb.org/t/p/w400/t1i10ptOivG4hV7erkX3tmKpiqm.jpg"
+    data-affiche2="https://image.tmdb.org/t/p/w1066_and_h600_bestv2/hZkgoQYus5vegHoetLkCJzb17zJ.jpg"
+    data-trailer="tZpXdiB_pg0"
+
+    data-ispremium="false"
+    data-hasfeatures="true"
+    style="display:none;">
+</div>
+
+<div id="player-container">
+    <div id="main-player" style="background-image: linear-gradient(to right, rgba(31.5, 31.5, 31.5, 1) calc((50vw - 170px) - 340px), rgba(31.5, 31.5, 31.5, 0.75) 200%, rgba(31.5, 31.5, 31.5, 0.84) 100%), url(https://image.tmdb.org/t/p/w400/t1i10ptOivG4hV7erkX3tmKpiqm.jpg);">
+
+
+
+    </div>
+
+    <div id="player-options" style="display:none;"></div>
+</div>
+
+<div class="customDiv"></div>
+
+
+
+<article class="full ignore-select">
+
+    <span class="bx1">
+        
+    </span>
+    
+     
+    <div class="overall_content">
+        <div class="row po container mt">
+            <div class="right-side columns large-9 nop movie-view">
+                <div class="movie-players ignore-select" id="cn-content">
+                    <div class="ftabs tabs-box">
+                        <div class="fctrl fx-row">
+                            <div class="tabs-sel">
+                                
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
+        
+        <div class="video-progress-bar">
+            <div class="progress-filled"></div>
+        </div>
+
+        
+        
+
+        <div class="fmain" style="background-image: linear-gradient(to right, rgba(31.5, 31.5, 31.5, 0.95) calc((50vw - 170px) - 340px), rgba(31.5, 31.5, 31.5, 0.85) 50%, rgba(31.5, 31.5, 31.5, 0.85) 100%), url(https://image.tmdb.org/t/p/w1066_and_h600_bestv2/hZkgoQYus5vegHoetLkCJzb17zJ.jpg);">
+
+       
+
+            <div class="fcols fx-row">
+                <div class="fmid">
+                    <h1 id="s-title">
+                        
+
+                        
+                        Fight Club
+                        <span class="tag release_date"> - <a href="/index.php?do=xfsearch&amp;xfname=date-de-sortie&amp;xf=1999">1999</a></span>
+                        
+                        
+                    </h1>
+
+                    <div class="facts">
+                        
+                        <span class="certification">-16</span> -
+                        
+                        <span class="genres"><a href="/index.php?do=xfsearch&amp;xfname=genre-1&amp;xf=Drame">Drame</a>, <a href="/index.php?do=xfsearch&amp;xfname=genre-1&amp;xf="></a></span>
+                        
+                        <span class="runtime">- 2h19</span>
+                        
+                    </div>
+
+                    <div class="fdesc clearfix slice-this" id="s-desc">
+                        <p class="desc-text">Résumé du film Fight Club en streaming complet vf et vostfr hd vod gratuit sans limite et sans inscription</p>
+                        Le narrateur, sans identité précise, vit seul, travaille seul, dort seul, mange seul ses plateaux‐repas pour une personne comme beaucoup d’autres personnes seules qui connaissent la misère humaine, morale et sexuelle. C’est pourquoi il va devenir membre du Fight club, un lieu clandestin où il va pouvoir retrouver sa virilité, l’échange et la communication. Ce club est dirigé par Tyler Durden, une sorte d’anarchiste entre gourou et philosophe qui prêche l’amour de son prochain.
+                    </div>
+
+                    <div class="flist clearfix">
+                        <ul class="flist-col" id="s-list">
+                            <li><span>Titre Original:</span> Fight Club</li>
+                            <li><span>Genre:</span> <a href="/index.php?do=xfsearch&amp;xfname=genre-1&amp;xf=Drame">Drame</a>, <a href="/index.php?do=xfsearch&amp;xfname=genre-1&amp;xf="></a></li>
+                            <li><span>Réalisateur:</span> <a href="/index.php?do=xfsearch&amp;xfname=director&amp;xf=David+Fincher">David Fincher</a></li>
+                            <li><span>Acteurs:</span> <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Edward+Norton">Edward Norton</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Brad+Pitt">Brad Pitt</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Helena+Bonham+Carter">Helena Bonham Carter</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Meat+Loaf">Meat Loaf</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Jared+Leto">Jared Leto</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Zach+Grenier">Zach Grenier</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Holt+McCallany">Holt McCallany</a>, <a href="/index.php?do=xfsearch&amp;xfname=actors&amp;xf=Eion+Bailey">Eion Bailey</a></li>
+
+                    
+                        </ul>
+
+                        <ul class="flist-col">
+                            <li><span>Version:</span><span id="film_lang"><a href="/index.php?do=xfsearch&amp;xfname=version-film&amp;xf=TrueFrench">TrueFrench</a></span></li>
+                            <li><span>Qualité:</span> <span id="film_quality" style="font-size: 11px; text-transform: uppercase; background: #333; color: #fff; margin-left: 2px; padding: 2px 5px; border-radius: 3px;"><a href="/index.php?do=xfsearch&amp;xfname=qualit&amp;xf=HD">HD</a></span></li>
+                            <li><span>Date de sortie:</span> <a href="/index.php?do=xfsearch&amp;xfname=date-de-sortie&amp;xf=1999">1999</a></li>
+                            <li><span>Budget du Film: 63 millions $</span></li>
+                            <li><span>Langue d'origine:</span> <a href="/index.php?do=xfsearch&amp;xfname=lang&amp;xf=Anglais">Anglais</a></li>
+                            <li class="db-rates" id="s-db"></li>
+                        </ul>
+                    </div>
+                </div>
+
+<div class="fleft">
+<div class="fposter">
+
+                        
+                        
+<div class="dvd-container" onclick="showDvdPoster()" style="position:relative">
+ 
+<link rel="stylesheet" href="/css/add.css?v=20260503i">
+<script src="/js/guest.js?v=20260503i" defer></script>
+<script src="/js/wprog.js?v=fss20261013fsbtn" defer></script>
+<script src="/js/fss-wakelock-u1.js?v=20260930wl1" defer></script>
+<script src="/js/membres2.js?v=20260507h" defer></script>
+<div id="ul-film-buttons"></div>
+ 
+    
+                            <img src="https://image.tmdb.org/t/p/w400/t1i10ptOivG4hV7erkX3tmKpiqm.jpg" alt="Fight Club" class="dvd-thumbnail">
+                        </div>
+
+                        <div id="dvdPosterOverlay" class="dvd-overlay" onclick="closeDvdPoster(event)">
+                            <div class="dvd-popup">
+                                <span class="dvd-close" onclick="closeDvdPoster(event)">&times;</span>
+                                <div class="dvd-viewport">
+                                    <div class="dvd-poster" id="dvdPoster">
+                                        <div class="dvd-poster-front">
+                                            <img src="" alt="Fight Club" id="dvdPosterImage">
+                                        </div>
+                                        <div class="dvd-edge-left"></div>
+                                        <div class="dvd-edge-right"></div>
+                                        <div class="dvd-edge-top"></div>
+                                        <div class="dvd-edge-bottom"></div>
+                                        <div class="dvd-highlight"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+
+                        <div class="short-meta short-qual"><a href="/index.php?do=xfsearch&amp;xfname=version-film&amp;xf=TrueFrench">TrueFrench</a></div>
+                        <div class="short-meta short-label"><a href="/index.php?do=xfsearch&amp;xfname=qualit&amp;xf=HD">HD</a></div>
+                        <br>
+
+                        
+                        
+                        <a id="openModalBtnCustom" href="#">
+                            <span class="initial-text">BANDE ANNONCE</span>
+                            <span class="filled-text">▶ BANDE ANNONCE</span>
+                        </a>
+
+                        <div id="modalCustom" class="modal-custom">
+                            <div class="modal-content-custom">
+                                <span class="close-custom">&times;</span>
+                                <div class="video-container">
+                                    <iframe id="trailerCustom" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                                </div>
+                            </div>
+                        </div>
+                        <br><br><br>
+                        
+                        
+                    </div>
+
+                    <div class="fscreens owl-carousel" id="owl-scr"></div>
+                </div>
+
+                <div class="fright">
+                    <div class="frate fx-row" id="frate-1761">
+                        <div class="fr-box22">
+                            <div class="fr-count fr-plus"></div>
+                            <div class="rate-plus ps" id="ps-1761" onclick="('plus', '1761');">
+                                &nbsp;&nbsp;&nbsp;<span class="fa fa-thumbs-up"></span><span id="vote-num-id-1761">236</span>
+                            </div>
+                        </div>
+                        <div class="fr-box22">
+                            <div class="fr-count fr-common"></div>
+                        </div>
+                        <div class="fr-box22">
+                            <div class="fr-count fr-minus"></div>
+                            <div class="rate-minus ms" id="ms-1761" onclick="('minus', '1761');">
+                                &nbsp;&nbsp;<span class="fa fa-thumbs-down"></span>
+                            </div>
+                        </div>
+                        <div class="fr-votes"><span id="vote-num-id-1761">236</span><span class="ratingtypeplusminus ignore-select ratingplus" >+212</span><span id="vote-num-id-1761">236</span></div>
+                    </div>
+
+                    <p>&nbsp;</p>
+
+              
+
+                    <div id="fss-ad-square" style="max-width:300px;margin:8px auto 0"></div>
+                    <div class="frkl"></div>
+                </div>
+            </div>
+
+
+
+            <div class="button-container" style="display: flex; justify-content: space-between; align-items: center; margin: 16px;">
+                <div class="report-btn-container">
+                    <a href="javascript:AddComplaint('1761', 'news')" class="report-btn-modern" aria-label="Signaler un problème">
+                        <svg class="report-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        <span>Signaler un problème</span> 
+                    </a>
+</div>
+
+                
+                <!-- disabled : remplace par auto-repair-v2.js -->
+                
+
+  
+
+                
+                <div id="downloadBtn" class="downloadContainer">
+                    <p style="text-align: right; margin: 0;">
+                        <span class="fa fa-cloud-download"></span> Télécharger
+                    </p>
+                </div>
+                
+            </div>
+            <div id="downloadOptions">
+                
+                <div class="option" data-url="https://vidzy.cc/embed-e0mmxtimbro0.html"><span>Télécharger en TRUEFRENCH</span></div>
+                
+                
+                <div class="option" data-url="https://vidzy.cc/embed-l1ui655bziyz.html"><span>Télécharger en FRENCH</span></div>
+                
+                
+            </div>
+
+            
+            
+            
+            
+             
+            
+
+        <div id="commu-releases-block" data-news-id="1761" data-type="film" class="commu-rel-block">
+            <div class="commu-rel-divider">— Autres releases —</div>
+            <div id="commu-rel-list" class="commu-rel-list">Chargement…</div>
+            <div class="commu-rel-add-row">
+                <button id="commu-rel-toggle-form" class="commu-rel-toggle"><i class="fa fa-plus"></i> Ajouter ma release</button>
+            </div>
+            <div id="commu-rel-form" class="commu-rel-form" hidden>
+                <div class="commu-rel-form-grid commu-rel-form-grid-4">
+                    <select id="commu-rel-quality" class="commu-rel-input">
+                        <option value="1080p">1080p</option>
+                        <option value="720p">720p</option>
+                        <option value="4K">4K UHD</option>
+                        <option value="DVDRIP">DVDRIP</option>
+                        <option value="BLURAY">BluRay</option>
+                        <option value="WEBRIP">WEBRIP</option>
+                        <option value="Autre">Autre (preciser)</option>
+                    </select>
+                    <input id="commu-rel-size-num" class="commu-rel-input" type="number" step="0.01" placeholder="Taille">
+                    <select id="commu-rel-size-unit" class="commu-rel-input">
+                        <option value="MB">MB</option>
+                        <option value="GB" selected>GB</option>
+                    </select>
+                    <button type="button" id="commu-rel-nfo-toggle" class="commu-rel-nfo-toggle commu-rel-nfo-compact" title="Ajouter un NFO"><i class="fa fa-file-text-o"></i> NFO</button>
+                </div>
+                <input id="commu-rel-quality-custom" class="commu-rel-input commu-rel-input-narrow" type="text" placeholder="Ex: Remux" maxlength="10" hidden>
+                <textarea id="commu-rel-nfo-textarea" hidden placeholder="Collez ici le NFO complet"></textarea>
+                <input id="commu-rel-name" class="commu-rel-input" type="text" placeholder="Nom de la release">
+                <input id="commu-rel-link" class="commu-rel-input" type="url" placeholder="https://1fichier.com/?abc123def">
+                <div class="commu-rel-form-actions">
+                    <button id="commu-rel-save" class="commu-rel-btn-save">Enregistrer</button>
+                    <button id="commu-rel-cancel" class="commu-rel-btn-cancel">Annuler</button>
+                </div>
+                <div id="commu-rel-form-msg" class="commu-rel-msg"></div>
+            </div>
+        </div>
+
+     
+        
+        
+        </div>
+    </div>
+
+
+
+
+<script>
+window.actorData = ["Edward Norton (Narrator) - https://image.tmdb.org/t/p/w300/8nytsqL59SFJTVYVrN72k6qkGgJ.jpg", "Brad Pitt (Tyler Durden) - https://image.tmdb.org/t/p/w300/bSk1OGSQ95RDxbUYuIw2NzJDcCa.jpg", "Helena Bonham Carter (Marla Singer) - https://image.tmdb.org/t/p/w300/hJMbNSPJ2PCahsP3rNEU39C8GWU.jpg", "Meat Loaf (Robert Paulson) - https://image.tmdb.org/t/p/w300/7gKLR1u46OB8WJ6m06LemNBCMx6.jpg", "Jared Leto (Angel Face) - https://image.tmdb.org/t/p/w300/aNUvy7cpa78NRjCvHi5vYuNJRtj.jpg", "Zach Grenier (Richard Chesler (Regional Manager)) - https://image.tmdb.org/t/p/w300/fSyQKZO39sUsqY283GXiScOg3Hi.jpg", "Holt McCallany (The Mechanic) - https://image.tmdb.org/t/p/w300/nttzDvj4rpcCvtxbsEwLRN6nQFq.jpg", "Eion Bailey (Ricky) - https://image.tmdb.org/t/p/w300/3DW13W47cKk4LQZwS4EvRaNBoVu.jpg"];
+</script>
+<div class="actors-container">
+    <ul id="actorList"></ul>
+</div>
+
+
+
+
+
+
+    <div class="full-comms ignore-select" id="full-comms">
+        <div class="comms-title icon-r"></div>
+        <div class="comms-bg">
+         
+
+            
+            <form method="post" action="" name="dlemasscomments" id="dlemasscomments"><div id="dle-comments-list">
+
+<div id="dle-ajax-comments"></div>
+<a name="comment"></a><ol class="comments-tree-list"><li id="comments-tree-item-15358652" class="comments-tree-item" ><div id='comment-id-15358652' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="Fiyoua"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15358652">
+        <a href="#" onclick="doCommentsRate('plus', '15358652'); return false;" ><i id="heart-15358652" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15358652); return false;"></i></a>
+        <span id="comments-ratig-layer-15358652" class="ignore-select"><span class="ratingtypeplus ignore-select" >1</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15358652'>Le début du début !</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('Fiyoua', '/index.php?subaction=userinfo&amp;user=Fiyoua', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=Fiyoua">Fiyoua</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 3.11.2021 </span> <span class="comm-when" data-df="10 Octobre 2026 13:21"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15347326" class="comments-tree-item" ><div id='comment-id-15347326' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="Enfoirus974"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15347326">
+        <a href="#" onclick="doCommentsRate('plus', '15347326'); return false;" ><i id="heart-15347326" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15347326); return false;"></i></a>
+        <span id="comments-ratig-layer-15347326" class="ignore-select"><span class="ratingtypeplus ignore-select" >1</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15347326'>Trop bon ! Ce film est juste incontournable</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('Enfoirus974', '/index.php?subaction=userinfo&amp;user=Enfoirus974', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=Enfoirus974">Enfoirus974</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 3.12.2024 </span> <span class="comm-when" data-df="13 Aout 2026 20:37"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15334234" class="comments-tree-item" ><div id='comment-id-15334234' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="Kenshindo"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15334234">
+        <a href="#" onclick="doCommentsRate('plus', '15334234'); return false;" ><i id="heart-15334234" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15334234); return false;"></i></a>
+        <span id="comments-ratig-layer-15334234" class="ignore-select"><span class="ratingtypeplus ignore-select" >1</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15334234'>Déjà 27 ans que ce film est sorti et j'ai l'impression que c'était hier. Bien sûr, comme ceux de ma génération qui ont ouvert les yeux grâce à ce film, je le repasse une fois par an, histoire de ne pas oublier... que je suis la merde de ce monde en putréfaction. <br><br>Une excellente critique littéraire et cinématographique d'un monde que je hais, puisque l'humain pourrait faire beaucoup, mais beaucoup mieux.<br>Ce film m'a d'ailleurs remis aux arts-martiaux, pour ressentir le fait que je ne suis pas en sucre et qu'une défaite... permet soit de s'effondrer, soit d'apprendre et de se relever plus fort. <br><br>Ce film était plutôt ciblé vers la gente masculine, mais peut aussi être dirigé vers la gente féminine, car les femmes que je côtoie sont loin d'être faibles. <br>Je prends note du commentaire suggérant de lire le livre, pour les détails. Merci! :)</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('Kenshindo', '/index.php?subaction=userinfo&amp;user=Kenshindo', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=Kenshindo">Kenshindo</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 25.12.2023 </span> <span class="comm-when" data-df="29 Mai 2026 01:54"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15333398" class="comments-tree-item" ><div id='comment-id-15333398' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="Desterel"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15333398">
+        <a href="#" onclick="doCommentsRate('plus', '15333398'); return false;" ><i id="heart-15333398" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15333398); return false;"></i></a>
+        <span id="comments-ratig-layer-15333398" class="ignore-select"><span class="ratingtypeplus ignore-select" >3</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15333398'>à chaque fois que je me fais larguer par une nana, je regarde ce film.</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('Desterel', '/index.php?subaction=userinfo&amp;user=Desterel', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=Desterel">Desterel</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 11.07.2020 </span> <span class="comm-when" data-df="24 Mai 2026 13:21"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15331088" class="comments-tree-item" ><div id='comment-id-15331088' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="soniapittbull"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15331088">
+        <a href="#" onclick="doCommentsRate('plus', '15331088'); return false;" ><i id="heart-15331088" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15331088); return false;"></i></a>
+        <span id="comments-ratig-layer-15331088" class="ignore-select"><span class="ratingtypeplus ignore-select" >2</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15331088'>Je suis la tumeur au cerveau de jack.</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('soniapittbull', '/index.php?subaction=userinfo&amp;user=soniapittbull', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=soniapittbull">soniapittbull</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 29.08.2024 </span> <span class="comm-when" data-df="11 Mai 2026 23:49"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15327312" class="comments-tree-item" ><div id='comment-id-15327312' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="Potar2024"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15327312">
+        <a href="#" onclick="doCommentsRate('plus', '15327312'); return false;" ><i id="heart-15327312" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15327312); return false;"></i></a>
+        <span id="comments-ratig-layer-15327312" class="ignore-select"><span class="ratingtypeplus ignore-select" >2</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15327312'>Un Must Have , pour le jeu des acteurs au top de leurs performances .... a voir biensur.....</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('Potar2024', '/index.php?subaction=userinfo&amp;user=Potar2024', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=Potar2024">Potar2024</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 18.12.2024 </span> <span class="comm-when" data-df="20 Avril 2026 00:03"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15324491" class="comments-tree-item" ><div id='comment-id-15324491' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="tordu69"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15324491">
+        <a href="#" onclick="doCommentsRate('plus', '15324491'); return false;" ><i id="heart-15324491" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15324491); return false;"></i></a>
+        <span id="comments-ratig-layer-15324491" class="ignore-select"><span class="ratingtypeplus ignore-select" >6</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15324491'>2026 et ce film est toujours une tuerie</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('tordu69', '/index.php?subaction=userinfo&amp;user=tordu69', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=tordu69">tordu69</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 13.09.2024 </span> <span class="comm-when" data-df="3 Avril 2026 13:48"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15301796" class="comments-tree-item" ><div id='comment-id-15301796' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="rico98"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15301796">
+        <a href="#" onclick="doCommentsRate('plus', '15301796'); return false;" ><i id="heart-15301796" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15301796); return false;"></i></a>
+        <span id="comments-ratig-layer-15301796" class="ignore-select"><span class="ratingtypeplus ignore-select" >1</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15301796'>Excellent</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('rico98', '/index.php?subaction=userinfo&amp;user=rico98', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=rico98">rico98</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 26.10.2025 </span> <span class="comm-when" data-df="22 Novembre 2025 03:43"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15295976" class="comments-tree-item" ><div id='comment-id-15295976' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="MisterMister"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15295976">
+        <a href="#" onclick="doCommentsRate('plus', '15295976'); return false;" ><i id="heart-15295976" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15295976); return false;"></i></a>
+        <span id="comments-ratig-layer-15295976" class="ignore-select"><span class="ratingtypeplus ignore-select" >3</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15295976'>What the...</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('MisterMister', '/index.php?subaction=userinfo&amp;user=MisterMister', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=MisterMister">MisterMister</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 30.03.2025 </span> <span class="comm-when" data-df="18 Octobre 2025 02:30"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li><li id="comments-tree-item-15278930" class="comments-tree-item" ><div id='comment-id-15278930' style='scroll-margin-top:90px'>
+ 
+	
+ 
+
+
+<div id="topcomms"> </div>
+
+     
+<div class="last-comm-link"></div>
+
+<div class="comm-item clearfix">
+	<div class="comm-left img-box">
+		<img src="/noavatar.png" alt="Yobel"/> 
+      
+	</div>
+  	
+
+
+    
+	<div class="comm-right">
+		<div class="comm-one clearfix">
+			<span> </span>
+			<span class="comm-author"> </span>
+			<p>
+			&nbsp;</p>
+			<span></span> 
+            
+	
+ 
+<div class="rate3-comm clearfix">
+    <span id="ratings-15278930">
+        <a href="#" onclick="doCommentsRate('plus', '15278930'); return false;" ><i id="heart-15278930" class="far fa-heart" style="font-size: 20px; color: #888;" onclick="toggleVote(15278930); return false;"></i></a>
+        <span id="comments-ratig-layer-15278930" class="ignore-select"><span class="ratingtypeplus ignore-select" >2</span></span>
+    </span>
+</div>  
+
+  
+        
+
+	  	</div><p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+	  	<div class="comm-two clearfix full-text">
+	  	<span style="text-align:left;font-size:20px;color:#fff;">
+ <div id='comm-id-15278930'>Incontournable</div> </span>
+	  	</div><p><p>
+	  	&nbsp;</p>
+	  	&nbsp;</p><p>
+	  	&nbsp;</p>
+		  <br>
+<span style="color: #8a8a8a;"><strong> Par <a onclick="ShowProfile('Yobel', '/index.php?subaction=userinfo&amp;user=Yobel', '0'); return false;" href="/index.php?subaction=userinfo&amp;user=Yobel">Yobel</a> </strong></span> | <span style="color: #8a8a8a;"><strong> </strong></span> <b><span style="color:#f48625">Membre <span class="premium-date"> 7.07.2025 </span> <span class="comm-when" data-df="7 Juillet 2025 03:24"></span>
+ 
+
+ 
+
+
+            
+	 
+    
+    
+    
+
+		
+    </div>  
+ 
+ 
+ 
+ 
+
+    
+
+ 
+ 
+
+ 
+
+
+
+
+
+
+    <style>
+.ratingtypeplusminus.liked {
+    color: #ff8800 !important;  
+}
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div></li></ol>
+<div class="ajax_comments_area"><div class="ajax_loaded_comments"></div><div class="ajax_comments_next"></div></div>
+</div></form>
+
+            <!--dlenavigationcomments-->
+
+        
+        </div>
+    </div>
+
+</article>
+
+ <style>
+ 
+ .fullscreen-button {
+    position: absolute; top: 10px; right: 10px;
+    width: 36px; height: 36px;
+    background: rgba(0,0,0,0.55); color: #fff;
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+    font-size: 20px; line-height: 1; cursor: pointer; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, transform 0.15s;
+    padding: 0;
+}
+.fullscreen-button:hover { background: rgba(255,140,0,0.85); transform: scale(1.05); }
+.movie_player, #main-player, #player-options { position: relative; }
+@media (min-width: 1010px) {
+    button.actor-scroll-button {
+        display: none !important;
+        visibility: hidden !important;
+    }
+}
+ </style>
+     
+<script src="/js/full_scr2ap_v5-20260725.js?v=20261023stk" defer></script><script src="/js/fss-film-menu.js?v=20261016c" defer></script><script src="/js/fss-film-fs.js?v=20261016fsauto2" defer></script><script src="/js/fss-play-shatter-u14.js?v=3tvauto" defer></script><script src="/js/fss-pshat-cleanup-u1.js?v=1" defer></script>
+<script src="/js/fss-local-module-v24.js?v=1" defer></script>
+<script src="/js/fss-indics-voy13.js?v=1" defer></script>
+<script src="/js/progress_manager-ap2.js?v=ap2seek728" defer></script>
+ 
+<script type="text/javascript">
+<!--
+	var dle_news_id= '1761';
+	var total_comments_pages= '4';
+	var current_comments_page= '1';
+
+$(function(){
+
+	$('.ajax_comments_next').waypoint(function() {
+
+		if (current_comments_page < total_comments_pages ) {
+
+			$.waypoints('disable');
+			current_comments_page ++;
+			ShowLoading('');
+
+			$.get(dle_root + "engine/ajax/comments.php", { cstart: current_comments_page, news_id: dle_news_id, skin: dle_skin, massact:'disable' }, function(data){
+
+				setTimeout(function() { $.waypoints('enable'); }, 300);
+				HideLoading('');
+
+				$(".ajax_loaded_comments").append(data.comments);
+
+			}, "json");
+
+		} else {
+
+			$.waypoints('destroy');
+		}
+
+
+	}, {
+	  offset: 'bottom-in-view'
+	});
+
+});
+
+//-->
+</script></div>
+    
+
+    
+</div>
+
+
+<footer class="footer">
+    <div class="footer-in center fx-row">
+        
+        <div class="subtit"></div>
+    </div>
+
+    
+	        
+	
+    
+        
+    <br>
+	
+    
+    <div class="pages clearfix">
+        <form method="post">
+            <div class="interface-buttons">
+                <button type="submit" name="skin_name" value="V2" class="interface-btn larger">Utiliser la Nouvelle interface</button>
+            </div>
+            <input type="hidden" name="action_skin_change" value="yes">
+        </form>
+    </div>
+    
+<br>
+ 
+ 
+    
+
+    <div class="sect-t fx-row icon-r"></div>
+    <div class="sect-c floats clearfix"></div>
+
+</footer>
+
+
+</div>
+
+
+
+ 
+
+
+
+
+
+ 
+
+
+
+<script src="/js/search01.js?v=knav21793024989" defer></script>
+<script src="/js/fss-ai-find.js?v=1" defer></script>
+
+
+
+
+<script src="/js/libs91.js?v=20260722r" defer></script>
+
+
+
+
+
+<script type="text/javascript">var _Hasync= _Hasync|| [];
+_Hasync.push(['Histats.start', '1,4867347,4,0,0,0,00010000']);
+_Hasync.push(['Histats.fasi', '1']);
+_Hasync.push(['Histats.track_hits', '']);
+(function() {
+var hs = document.createElement('script'); hs.type = 'text/javascript'; hs.async = true;
+hs.src = ('//s10.histats.com/js15_as.js');
+(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(hs);
+})();</script>
+<noscript><a href="/" target="_blank"><img src="//sstatic1.histats.com/0.gif?4867347&101" alt="php hit counter" border="0"></a></noscript>
+
+
+
+
+<script src="/menu3b.js" defer></script>
+<script src="/menu61.js?v=mdp1792370091" defer></script>
+<script src="/js/auto-repair-v4.js?v=fss20260804r1" defer></script>
+<script src="/js/pseudo-redirect.js?v=fss20260713a" defer></script>
+
+
+
+
+
+<script src="/js/wprog.js?v=fss20261013fsbtn" defer></script>
+<script src="/js/membres2.js?v=fss20260713a" defer></script>
+<script src="/js/short-buttons2.js?v=fss20260713a" defer></script>
+
+<!--noindex-->
+
+
+	<div class="login-box" id="login-box" title="Connexion">
+		<form method="post">
+			<input type="text" name="login_name" id="login_name" placeholder="Login"/>
+			<input type="password" name="login_password" id="login_password" placeholder="Password" />
+			<button onclick="submit();" type="submit" title="Login">Valider</button>
+			<input name="login" type="hidden" id="login" value="submit" />
+			<div class="lb-check">
+				<input type="checkbox" name="login_not_save" id="login_not_save" value="1"/>
+				<label for="login_not_save">Ne pas rester connecté</label> 
+			</div>
+			<div class="lb-lnk flex-row">
+ 			</div>
+		</form>
+ 
+	</div>
+
+<!--/noindex-->
+<script type="text/javascript">
+<!--
+var dle_root       = '/';
+var dle_admin      = '';
+var dle_login_hash = '5707f35c2fea632ddadb9e898074ded1cd318351';
+var dle_group      = 5;
+var dle_skin       = 'VFR1';
+var dle_wysiwyg    = '0';
+var quick_wysiwyg  = '1';
+var dle_act_lang   = ["Oui", "Non", "Entrer", "Fermer", "Enregistrer", "supprimer", "En cours. veuillez patienter... "];
+var menu_short     = 'Edition rapide';
+var menu_full      = 'Edition complète';
+var menu_profile   = 'Profil';
+var menu_send      = 'Envoyer Message';
+var menu_uedit     = 'Administration';
+var dle_info       = 'Info';
+var dle_confirm    = 'Confirmer';
+var dle_prompt     = 'Entrer';
+var dle_req_field  = 'Vérifiez toutes les zones requises';
+var dle_del_agree  = 'êtes vous sûr de vouloir effacer ce commentaire?';
+var dle_spam_agree = 'Voulez-vous vraiment marquer cet utilisateur comme un spammeur ? Ceci va supprimer tous ses commentaires';
+var dle_complaint  = 'Quel est le problème ? ';
+var dle_big_text   = 'Zone de texte selectionnée trop grande.';
+var dle_orfo_title = 'Entrez un commentaire pour Prevenir deune erreur';
+var dle_p_send     = 'Envoyer';
+var dle_p_send_ok  = 'Envoie de la notification réussis';
+var dle_save_ok    = 'Les modifications ont bien été enregistré.';
+var dle_reply_title= 'Répondre au commentaire';
+var dle_tree_comm  = '1';
+var dle_del_news   = 'Supprimer';
+var dle_sub_agree  = '';
+var allow_dle_delete_news   = false;
+
+//-->
+</script>
+
+
+
+
+
+ 
+            
+            
+
+            
+
+
+<script
+ src="https://cdn.runative-syndicate.com/sdk/v1/onetag.js"
+ data-ts-spot="b761585cf37e4f59950f1f4e6ce4c390"
+ async defer
+></script>
+            
+ 
+            
+
+
+
+            
+
+
+
+            
+
+
+<script id="aclib" type="text/javascript" src="/js/959b9691.js"></script>
+<script type="text/javascript">
+    aclib.runPop({
+        zoneId: '11327438',
+    });
+</script>
+
+            
+
+
+
+<script data-cfasync="false" async type="text/javascript" src="//mc.zabtisessed.qpon/rUBqn3ypR8arQC/120175"></script>
+
+         
+
+
+
+ 
+ 
+
+
+ 
+
+
+
+
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}
+</script>
+
+<script src="/js/release.js?v=fss20260713a" defer></script>
+<script src="/js/spoiler.js?v=fss20260713a" defer></script>
+<script src="/engine/ajax/vidzy_token.php?as=js" defer></script>
+<script src="/js/vidzy-member.js?v=fss20260713a" defer></script>
+
+<script src="/js/vo-mode.js?v=fss20260803a" defer></script>
+
+<script>
+(function(){
+  if (window.__fssHideEmptyBoxInfo) return;
+  window.__fssHideEmptyBoxInfo = true;
+  function hideEmpty(){
+    document.querySelectorAll('.berrors').forEach(function(el){
+      var t = (el.textContent || '').toLowerCase().trim();
+      if (/boite d.?envoi est vide|boite de reception est vide|aucun message/.test(t)) {
+        el.style.display = 'none';
+      }
+    });
+  }
+  if (document.readyState !== 'loading') hideEmpty();
+  else document.addEventListener('DOMContentLoaded', hideEmpty);
+  setTimeout(hideEmpty, 500);
+})();
+</script>
+
+
+<link rel="stylesheet" href="/css/home-carousel-u6.css">
+<script src="/js/home-carousel-u6.js" defer></script>
+
+<script src="/js/sso-client-u3.js"></script>
+
+<script src="/js/fss-loader.js?v=fss20260717fix" defer></script>
+
+<style>
+.fa-heart {
+  transition: color .2s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.fa-heart:hover { color: #f48625 !important; }
+.fa-heart.liked {
+  color: #f48625 !important;
+  font-weight: 900;
+}
+.fa-heart.liked::before {
+  content: "\f004";
+  font-family: "Font Awesome 5 Free", "Font Awesome 6 Free", FontAwesome;
+}
+.fa-heart.fss-burst {
+  animation: fssHeartPulse .55s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes fssHeartPulse {
+  0%   { transform: scale(1); }
+  20%  { transform: scale(.85); }
+  45%  { transform: scale(1.45); }
+  70%  { transform: scale(.95); }
+  100% { transform: scale(1); }
+}
+.fss-heart-wrap {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}
+.fss-particle {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6px; height: 6px;
+  background: #f48625;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px rgba(244,134,37,.6);
+}
+.fss-particle.go {
+  animation: fssParticleFly .7s ease-out forwards;
+}
+@keyframes fssParticleFly {
+  0%   { opacity: 1; transform: translate(-50%, -50%) translate(0,0) scale(.5); }
+  60%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(0); }
+}
+.fss-mini-heart {
+  position: absolute;
+  top: 50%; left: 50%;
+  font-size: 12px;
+  color: #f48625;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  text-shadow: 0 0 4px rgba(244,134,37,.5);
+}
+.fss-mini-heart.go {
+  animation: fssMiniHeartFly 1s ease-out forwards;
+}
+@keyframes fssMiniHeartFly {
+  0%   { opacity: 1; transform: translate(-50%, -50%) translate(0,0) scale(.4) rotate(0deg); }
+  30%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--mx), var(--my)) scale(1.1) rotate(var(--mrot)); }
+}
+.fa-heart.fss-break {
+  animation: fssHeartBreak .6s ease-in-out;
+}
+@keyframes fssHeartBreak {
+  0%   { transform: scale(1) rotate(0deg); }
+  15%  { transform: scale(1.2) rotate(-9deg); }
+  32%  { transform: scale(.9) rotate(9deg); }
+  50%  { transform: scale(1.08) rotate(-6deg); }
+  68%  { transform: scale(.96) rotate(4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.fss-break-heart {
+  position: absolute;
+  top: 50%; left: 50%;
+  font-size: 17px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  text-shadow: 0 0 5px rgba(0,0,0,.55);
+}
+.fss-break-heart.go {
+  animation: fssBreakFall 1s ease-in forwards;
+}
+@keyframes fssBreakFall {
+  0%   { opacity: 1; transform: translate(-50%, -50%) translate(0,-2px) scale(1.35) rotate(0deg); }
+  25%  { opacity: 1; transform: translate(-50%, -50%) translate(0,-6px) scale(1.15) rotate(var(--br)); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--bx), 36px) scale(.65) rotate(var(--br2)); }
+}
+.fss-shard {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 5px; height: 5px;
+  background: #8a8a8a;
+  border-radius: 1px;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+.fss-shard.go {
+  animation: fssShardFall .8s ease-in forwards;
+}
+@keyframes fssShardFall {
+  0%   { opacity: 1; transform: translate(-50%, -50%) translate(0,0) scale(.6) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--sx), var(--sy)) scale(.2) rotate(var(--srot)); }
+}
+</style>
+<script>
+(function(){
+  if (window.__fssToggleVoteReady) return;
+  window.__fssToggleVoteReady = true;
+  function ensureWrap(heart) {
+    if (!heart) return null;
+    var p = heart.parentElement;
+    if (p && p.classList && p.classList.contains('fss-heart-wrap')) return p;
+    var w = document.createElement('span');
+    w.className = 'fss-heart-wrap';
+    heart.parentNode.insertBefore(w, heart);
+    w.appendChild(heart);
+    return w;
+  }
+  function spawnBurst(wrap) {
+    if (!wrap) return;
+    var n = 8;
+    for (var i = 0; i < n; i++) {
+      var angle = (Math.PI * 2 * i) / n + (Math.random() * 0.4 - 0.2);
+      var dist = 28 + Math.random() * 14;
+      var dx = Math.cos(angle) * dist;
+      var dy = Math.sin(angle) * dist;
+      var p = document.createElement('span');
+      p.className = 'fss-particle';
+      p.style.setProperty('--dx', dx.toFixed(1) + 'px');
+      p.style.setProperty('--dy', dy.toFixed(1) + 'px');
+      p.style.animationDelay = (i * 12) + 'ms';
+      wrap.appendChild(p);
+      requestAnimationFrame(function(el){ return function(){ el.classList.add('go'); }; }(p));
+      setTimeout(function(el){ return function(){ el.remove(); }; }(p), 850);
+    }
+    for (var j = 0; j < 3; j++) {
+      var mx = (Math.random() - 0.5) * 30;
+      var my = -25 - Math.random() * 25;
+      var mrot = (Math.random() - 0.5) * 60;
+      var mh = document.createElement('span');
+      mh.className = 'fss-mini-heart';
+      mh.innerHTML = '♥';
+      mh.style.setProperty('--mx', mx.toFixed(1) + 'px');
+      mh.style.setProperty('--my', my.toFixed(1) + 'px');
+      mh.style.setProperty('--mrot', mrot.toFixed(1) + 'deg');
+      mh.style.animationDelay = (j * 80) + 'ms';
+      wrap.appendChild(mh);
+      requestAnimationFrame(function(el){ return function(){ el.classList.add('go'); }; }(mh));
+      setTimeout(function(el){ return function(){ el.remove(); }; }(mh), 1100);
+    }
+  }
+  var LK_KEY = 'fss_likes_v2';
+  function lkGet(){
+    try { return JSON.parse(localStorage.getItem(LK_KEY)) || {}; } catch(e) { return {}; }
+  }
+  function lkSet(obj){
+    try { localStorage.setItem(LK_KEY, JSON.stringify(obj)); } catch(e) {}
+  }
+  function lkRemember(id, baseline){
+    var o = lkGet(); o[id] = { b: baseline }; lkSet(o);
+  }
+  function lkForget(id){
+    var o = lkGet(); delete o[id]; lkSet(o);
+  }
+  function applyLikedState(heart){
+    if (!heart || heart.classList.contains('liked')) return;
+    heart.classList.remove('far');
+    heart.classList.add('liked', 'fas');
+    heart.style.color = '#f48625';
+  }
+  function getCurrentCount(id){
+    var container = document.getElementById('comments-ratig-layer-' + id);
+    if (!container) {
+      var heart = document.getElementById('heart-' + id);
+      if (heart && heart.closest) container = heart.closest('#ratings-' + id);
+    }
+    if (!container) return 0;
+    var target = container.querySelector('.ratingtypeplus, .ratingtypeplusminus') || container;
+    var txt = (target.textContent || '').trim();
+    var m = txt.match(/(-?\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function silenceCommentsRate(){
+    if (typeof window.doCommentsRate !== 'function' || window.__fssRateSilenced) return;
+    window.__fssRateSilenced = true;
+    var orig = window.doCommentsRate;
+    window.doCommentsRate = function(a, c){
+      try {
+        if (typeof ShowLoading === 'function') ShowLoading("");
+        $.get(dle_root + "engine/ajax/ratingcomments.php", {
+          go_rate: a, c_id: c, skin: dle_skin, user_hash: dle_login_hash
+        }, function(r){
+          if (typeof HideLoading === 'function') HideLoading("");
+          if (r && r.success) {
+            var b = r.rating || '';
+            b = b.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+            $("#comments-ratig-layer-" + c).html(b);
+            $("#comments-vote-num-id-" + c).html(r.votenum);
+          }
+        }, "json");
+      } catch(e) {
+        if (typeof HideLoading === 'function') HideLoading("");
+      }
+    };
+  }
+  silenceCommentsRate();
+  setTimeout(silenceCommentsRate, 1000);
+  setTimeout(silenceCommentsRate, 3000);
+  function adjustCount(id, delta){
+    var container = document.getElementById('comments-ratig-layer-' + id);
+    if (!container) {
+      var heart = document.getElementById('heart-' + id);
+      if (heart && heart.closest) container = heart.closest('#ratings-' + id);
+    }
+    if (!container) return;
+    var target = container.querySelector('.ratingtypeplus, .ratingtypeplusminus') || container;
+    var txt = (target.textContent || '').trim();
+    var m = txt.match(/(-?\d+)/);
+    var prefix = '';
+    var newVal;
+    if (m) {
+      var cur = parseInt(m[1], 10);
+      newVal = cur + delta;
+      if (txt.charAt(0) === '+' && newVal > 0) prefix = '+';
+    } else {
+      newVal = delta;
+      if (delta > 0) prefix = '+';
+    }
+    target.textContent = prefix + newVal;
+    if (target.classList && target.classList.contains('ratingtypeplusminus')) {
+      target.classList.remove('ratingminus','ratingplus','ratingzero');
+      if (newVal > 0) target.classList.add('ratingplus');
+      else if (newVal < 0) target.classList.add('ratingminus');
+      else target.classList.add('ratingzero');
+    }
+  }
+  function spawnBreak(wrap) {
+    if (!wrap) return;
+    var bh = document.createElement('span');
+    bh.className = 'fss-break-heart';
+    bh.innerHTML = '💔';
+    bh.style.setProperty('--bx', ((Math.random() - 0.5) * 22).toFixed(1) + 'px');
+    bh.style.setProperty('--br', ((Math.random() - 0.5) * 30).toFixed(1) + 'deg');
+    bh.style.setProperty('--br2', ((Math.random() - 0.5) * 90).toFixed(1) + 'deg');
+    wrap.appendChild(bh);
+    requestAnimationFrame(function(){ bh.classList.add('go'); });
+    setTimeout(function(){ bh.remove(); }, 1050);
+    var n = 6;
+    for (var i = 0; i < n; i++) {
+      var side = (i % 2 === 0) ? -1 : 1;
+      var sx = side * (14 + Math.random() * 16);
+      var sy = 14 + Math.random() * 20;
+      var p = document.createElement('span');
+      p.className = 'fss-shard';
+      p.style.setProperty('--sx', sx.toFixed(1) + 'px');
+      p.style.setProperty('--sy', sy.toFixed(1) + 'px');
+      p.style.setProperty('--srot', ((Math.random() - 0.5) * 200).toFixed(1) + 'deg');
+      p.style.animationDelay = (i * 15) + 'ms';
+      wrap.appendChild(p);
+      requestAnimationFrame(function(el){ return function(){ el.classList.add('go'); }; }(p));
+      setTimeout(function(el){ return function(){ el.remove(); }; }(p), 850);
+    }
+  }
+  function fssApplyCount(id, r) {
+    if (!(r && r.success)) return;
+    var b = (r.rating || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    if (b) $("#comments-ratig-layer-" + id).html(b);
+    if (r.votenum !== undefined) $("#comments-vote-num-id-" + id).html(r.votenum);
+  }
+  window.toggleVote = function(id) {
+    var heart = document.getElementById('heart-' + id);
+    if (!heart) return false;
+    if (heart.getAttribute('data-fsslk') === '1') return false;
+    var wrap = ensureWrap(heart);
+    var liked = heart.classList.contains('liked');
+    heart.setAttribute('data-fsslk', '1');
+    if (typeof ShowLoading === 'function') ShowLoading("");
+    if (liked) {
+      $.get(dle_root + "engine/ajax/fss_comment_unlike.php", {
+        c_id: id, skin: dle_skin, user_hash: dle_login_hash
+      }, function(r){
+        if (typeof HideLoading === 'function') HideLoading("");
+        heart.removeAttribute('data-fsslk');
+        heart.classList.remove('liked', 'fas', 'fss-burst');
+        heart.classList.add('far');
+        heart.style.color = '';
+        heart.classList.remove('fss-break');
+        void heart.offsetWidth;
+        heart.classList.add('fss-break');
+        spawnBreak(wrap);
+        lkForget(id);
+        fssApplyCount(id, r);
+      }, "json").fail(function(){
+        if (typeof HideLoading === 'function') HideLoading("");
+        heart.removeAttribute('data-fsslk');
+      });
+    } else {
+      $.get(dle_root + "engine/ajax/ratingcomments.php", {
+        go_rate: 'plus', c_id: id, skin: dle_skin, user_hash: dle_login_hash
+      }, function(r){
+        if (typeof HideLoading === 'function') HideLoading("");
+        heart.removeAttribute('data-fsslk');
+        heart.classList.remove('far');
+        heart.classList.add('liked', 'fas');
+        heart.style.color = '#f48625';
+        heart.classList.remove('fss-break', 'fss-burst');
+        void heart.offsetWidth;
+        heart.classList.add('fss-burst');
+        spawnBurst(wrap);
+        lkRemember(id, 0);
+        fssApplyCount(id, r);
+      }, "json").fail(function(){
+        if (typeof HideLoading === 'function') HideLoading("");
+        heart.removeAttribute('data-fsslk');
+      });
+    }
+    return false;
+  };
+  function restoreLikes(){
+    var o = lkGet();
+    var hearts = document.querySelectorAll('[id^="heart-"]');
+    for (var i = 0; i < hearts.length; i++) {
+      var idStr = hearts[i].id.slice(6);
+      if (o[idStr]) applyLikedState(hearts[i]);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', restoreLikes);
+  } else {
+    restoreLikes();
+  }
+  setTimeout(restoreLikes, 800);
+  setTimeout(restoreLikes, 2500);
+  if (window.MutationObserver) {
+    var mo = new MutationObserver(function(){ restoreLikes(); });
+    document.addEventListener('DOMContentLoaded', function(){
+      var root = document.getElementById('dle-ajax-comments') || document.body;
+      if (root) mo.observe(root, { childList: true, subtree: true });
+    });
+  }
+})();
+</script>
+
+<link rel="stylesheet" href="/css/fss-quicklogin-v14.css">
+<script src="/js/fss-quicklogin-v15.js"></script>
+<script src="/js/fss-click-sound-u2.js" defer></script>
+
+<link rel="stylesheet" href="/js/fss-comments-u31.css">
+<script src="/js/fss-comments-u42.js" defer></script>
+
+<link rel="stylesheet" href="/js/fss-notif-u18d.css">
+<script src="/js/fss-notif-u18.js" defer></script>
+<script src="/js/fss-cmtjump.js?v=1" defer></script>
+  <script src="/js/fss-comm-date-u1.js" defer></script>
+<link href="/css/fss-local-module-w9.css?v=zx2" rel="stylesheet" />
+<script src="/js/fss-remote-r28.js?v=1" defer></script>
+<script src="/js/fss-cssfs-t5.js?v=1" defer></script>
+<script src="/js/fss-local-module-v24.js?v=1" defer></script>
+<script src="/js/fss-pjax.js?v=4" defer></script>
+<script src="/js/fss-ads.js?v=08242349" defer></script>
+<script>/*FSS_VZLOL_REWRITE*/</script>
+<script>/*FSS_VZORG_REWRITE*/(function(){function fx(f){try{var s=f&&(f.getAttribute&&f.getAttribute('src'))||f.src;if(s&&/\/\/(www\.)?vidzy\.(cc|live|lol)\//i.test(s)){var n=s.replace(/\/\/(www\.)?vidzy\.(cc|live|lol)\//i,'//vidzy.org/');if(n!==s)f.src=n;}}catch(e){}}function scan(r){try{var l=(r&&r.querySelectorAll)?r.querySelectorAll('iframe'):[];for(var i=0;i<l.length;i++)fx(l[i]);}catch(e){}}try{new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){var m=ms[i];if(m.addedNodes){for(var j=0;j<m.addedNodes.length;j++){var n=m.addedNodes[j];if(n.tagName==='IFRAME')fx(n);else if(n.querySelectorAll)scan(n);}}if(m.type==='attributes'&&m.target&&m.target.tagName==='IFRAME')fx(m.target);}}).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});}catch(e){}scan(document);if(document.addEventListener)document.addEventListener('DOMContentLoaded',function(){scan(document);});})();</script>
+
+<link rel="stylesheet" href="/css/fss-mobile-dock-u1.css?v=22">
+<script src="/js/fss-mobile-dock-u1.js?v=23" defer></script>
+<link rel="stylesheet" href="/css/fss-dock-search-u1.css?v=8">
+<script src="/js/fss-dock-search-u1.js?v=grp8ts1793019037" defer></script>
+
+
+</body>
+</html>
+
+<!-- French-Stream Copyright  (https://french-stream.club) -->

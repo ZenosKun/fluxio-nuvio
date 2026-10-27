@@ -1,0 +1,27 @@
+{
+  "name": "fluxio-nuvio",
+  "version": "3.1.1",
+  "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (5 s), routage par type de contenu",
+  "main": "src/plugin/index.js",
+  "scripts": {
+    "build": "node build.js",
+    "minify": "node build.js --minify",
+    "test": "node tests/test_e2e.cjs"
+  },
+  "keywords": [
+    "nuvio",
+    "provider",
+    "streaming",
+    "french"
+  ],
+  "author": "ZenosKun",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZenosKun/fluxio-nuvio"
+  },
+  "homepage": "https://github.com/ZenosKun/fluxio-nuvio#readme",
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
