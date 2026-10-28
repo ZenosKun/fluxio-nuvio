@@ -75,6 +75,7 @@ export function readConfig() {
     // budget complet).
     const earlyExit = boolOr(s.earlyExit, true);
     const verifyLinks = boolOr(s.verifyLinks, true);
+    const selfTest = boolOr(s.selfTest, false);
 
     // Échéance douce (tunable avancé, SCRAPER_SETTINGS uniquement) : Nuvio
     // attend la réponse COMPLÈTE du plugin puis l'affiche — si notre rendu
@@ -127,6 +128,7 @@ export function readConfig() {
         detectAnime,
         earlyExit,
         verifyLinks,
+        selfTest,
         softMs,
         useTranscode,
         sources,

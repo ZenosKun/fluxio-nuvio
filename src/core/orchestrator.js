@@ -30,7 +30,7 @@ import { rankCards } from '../utils/match.js';
 import { resolveSources } from './registry.js';
 import { buildPlan, kindOf } from './plan.js';
 import { createStopper, raceEarlyExit, makeSourceShouldStop } from './stopper.js';
-import { finalizeStreams } from './stream.js';
+import { finalizeStreams, TEST_STREAMS } from './stream.js';
 import * as bridge from '../bridge/sestudio.js';
 
 /** Échéance douce : au-delà, 1 flux pertinent suffit à rendre (tunable
@@ -185,6 +185,15 @@ export async function extractStreams(tmdbId, mediaType, season, episode, options
         } catch (err) {
             console.warn('[verify] ignoré : ' + (err && err.message ? err.message : err));
         }
+    }
+    if (cfg.selfTest) {
+        // Mode diagnostic : domaine du lien dans le nom + 2 flux publics de test en tête.
+        streams = TEST_STREAMS.map(t => Object.assign({}, t)).concat(
+            streams.map(st => {
+                const m = /^https?:\/\/([^\/?#]+)/i.exec(String(st.url || ''));
+                return Object.assign({}, st, { name: st.name + (m ? ' @' + m[1] : '') });
+            })
+        );
     }
     for (const st of streams) {
         // Diagnostic : visible dans la console de l'app (lancée depuis un terminal).

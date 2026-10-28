@@ -36,6 +36,8 @@ for (const mode of ['timers', 'sans timers']) {
   ok('MP4 sondé en HEAD, HLS en GET', calls.filter(c => c[1].endsWith('.mp4')).every(c => c[0] === 'HEAD') && calls.filter(c => c[1].endsWith('.m3u8')).every(c => c[0] === 'GET'));
   ok('Referer du flux transmis à la sonde', calls.some(c => c[1].includes('good.m3u8') && c[2] === 'https://p.example/'));
 }
+const ep = finalizeStreams([mk('french-manga · E05 · uqload · HLS · VF', 'https://f.example/good.m3u8', 'french-manga')], cfg)[0];
+ok('nom avec épisode = Fluxio · site · hôte · E05', ep.name === 'Fluxio · french-manga · uqload · E05', ep.name);
 const skip = await verifyStreams(fin, { remainingMs: 2000 });
 ok('budget restant trop court → aucune sonde, liste inchangée', skip === fin);
 console.log(`\nRésultat : ${pass} OK, ${fail} échec(s)`);

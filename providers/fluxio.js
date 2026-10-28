@@ -1,5 +1,5 @@
 /**
- * Fluxio v3.1.4 — multi-sources FR pour Nuvio
+ * Fluxio v3.1.5 — multi-sources FR pour Nuvio
  * Built: 2026-10-28T07:06:37.276Z
  */
 var __provider = (() => {
@@ -78,6 +78,7 @@ var __provider = (() => {
     const detectAnime = boolOr(s.detectAnime, true);
     const earlyExit = boolOr(s.earlyExit, true);
     const verifyLinks = boolOr(s.verifyLinks, true);
+    const selfTest = boolOr(s.selfTest, false);
     const softSec = parseInt(String(s.softMs || ""), 10);
     const softMs = Number.isFinite(softSec) && softSec >= 3e3 && softSec <= 15e3 ? softSec : 5e3;
     const useTranscode = s.useTranscode === void 0 || s.useTranscode === null || s.useTranscode === "" ? false : String(s.useTranscode).toLowerCase() === "true";
@@ -94,6 +95,7 @@ var __provider = (() => {
       detectAnime,
       earlyExit,
       verifyLinks,
+      selfTest,
       softMs,
       useTranscode,
       sources,
@@ -2331,11 +2333,21 @@ var __provider = (() => {
     const epLabel = episode > 0 ? " \xB7 E" + String(episode).padStart(2, "0") : "";
     return `${site}${epLabel} \xB7 ${host} \xB7 ${kind} \xB7 ${langLabel(lang)}`;
   }
+  var TEST_STREAMS = [
+    { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
+    { name: "Fluxio \xB7 TEST MP4 (google)", title: "Test MP4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", quality: "Direct", language: "TEST" }
+  ];
   function displayName(s) {
     if (s.name) return s.name;
     const parts = String(s.title || "").split(" \xB7 ");
-    const host = parts.length > 1 ? parts[1] : "";
-    return PROVIDER_NAME + (s._site ? " \xB7 " + s._site : "") + (host ? " \xB7 " + host : "");
+    let ep = "";
+    const rest = [];
+    parts.forEach(function(p, i) {
+      if (i > 0 && /^E\d{1,4}$/.test(p)) ep = p;
+      else rest.push(p);
+    });
+    const host = rest.length > 1 ? rest[1] : "";
+    return PROVIDER_NAME + (s._site ? " \xB7 " + s._site : "") + (host ? " \xB7 " + host : "") + (ep ? " \xB7 " + ep : "");
   }
   function finalizeStreams(streams, cfg) {
     const order = cfg.fallbackLangs;
@@ -4031,6 +4043,14 @@ var __provider = (() => {
           console.warn("[verify] ignor\xE9 : " + (err && err.message ? err.message : err));
         }
       }
+      if (cfg.selfTest) {
+        streams = TEST_STREAMS.map((t) => Object.assign({}, t)).concat(
+          streams.map((st) => {
+            const m = /^https?:\/\/([^\/?#]+)/i.exec(String(st.url || ""));
+            return Object.assign({}, st, { name: st.name + (m ? " @" + m[1] : "") });
+          })
+        );
+      }
       for (const st of streams) {
         console.log("[stream] " + st.name + " | " + st.quality + " | " + st.language + " | " + st.url + " | headers=" + JSON.stringify(st.headers || {}));
       }
@@ -4361,6 +4381,13 @@ var __provider = (() => {
             label: "Tester les liens avant affichage",
             description: "Teste rapidement chaque lien (8 s max) : les liens morts passent en fin de liste avec \u26A0 au lieu de bloquer en \xAB buffering \xBB.",
             defaultValue: true
+          },
+          {
+            type: "toggle",
+            key: "selfTest",
+            label: "Mode diagnostic (flux de test + domaine des liens)",
+            description: "Ajoute 2 flux publics de test en t\xEAte de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le probl\xE8me vient du lecteur de l\u2019app, pas du plugin.",
+            defaultValue: false
           },
           {
             type: "text",

@@ -45,12 +45,25 @@ export function composeTitle({ site, episode, host, url, lang }) {
     return `${site}${epLabel} · ${host} · ${kind} · ${langLabel(lang)}`;
 }
 
+/** Flux publics de test : si eux non plus ne se lisent pas, le problème est le lecteur, pas les sources. */
+export const TEST_STREAMS = [
+    { name: 'Fluxio · TEST HLS (mux.dev)', title: 'Test HLS', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', quality: 'Auto (HLS)', language: 'TEST' },
+    { name: 'Fluxio · TEST MP4 (google)', title: 'Test MP4', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', quality: 'Direct', language: 'TEST' },
+];
+
 /** Nom affiché dans la liste (l'app n'affiche pas `title`) : Fluxio · source · hôte. */
 function displayName(s) {
     if (s.name) return s.name;
+    // Titre = « site[ · E05] · hôte · type · langue » : on sort le n° d'épisode.
     const parts = String(s.title || '').split(' · ');
-    const host = parts.length > 1 ? parts[1] : '';
-    return PROVIDER_NAME + (s._site ? ' · ' + s._site : '') + (host ? ' · ' + host : '');
+    let ep = '';
+    const rest = [];
+    parts.forEach(function (p, i) {
+        if (i > 0 && /^E\d{1,4}$/.test(p)) ep = p;
+        else rest.push(p);
+    });
+    const host = rest.length > 1 ? rest[1] : '';
+    return PROVIDER_NAME + (s._site ? ' · ' + s._site : '') + (host ? ' · ' + host : '') + (ep ? ' · ' + ep : '');
 }
 
 /** Tri par langue préférée puis dédoublonnage par URL, format Nuvio final. */

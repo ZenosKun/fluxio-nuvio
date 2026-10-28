@@ -77,6 +77,14 @@ module.exports = {
             defaultValue: true,
         },
         {
+            type: 'toggle',
+            key: 'selfTest',
+            label: 'Mode diagnostic (flux de test + domaine des liens)',
+            description:
+                'Ajoute 2 flux publics de test en tête de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le problème vient du lecteur de l’app, pas du plugin.',
+            defaultValue: false,
+        },
+        {
             type: 'text',
             key: 'tmdbKey',
             label: 'Clé API TMDB personnelle (optionnel)',

@@ -1,6 +1,6 @@
 {
   "name": "fluxio-nuvio",
-  "version": "3.1.4",
+  "version": "3.1.5",
   "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (5 s), routage par type de contenu",
   "main": "src/plugin/index.js",
   "scripts": {
