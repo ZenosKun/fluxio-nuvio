@@ -1,7 +1,7 @@
 {
   "name": "fluxio-nuvio",
-  "version": "3.1.13",
-  "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (10 s), tri par qualité, routage par type de contenu, anti-écran-noir uqload (v3.1.13)",
+  "version": "3.1.14",
+  "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (10 s), tri par qualité, routage par type de contenu, anti-écran-noir uqload au niveau du résolveur (v3.1.14)",
   "main": "src/plugin/index.js",
   "scripts": {
     "build": "node build.js",

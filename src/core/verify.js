@@ -174,12 +174,19 @@ export function muxedVariantUrl(masterText, language) {
     let m;
     while ((m = reMedia.exec(t)) !== null) {
         const line = m[0];
-        const lm = /LANGUAGE="([^"]*)"/i.exec(line);
         const um = /URI="([^"]+)"/i.exec(line);
         const sm = um ? /index-(a\d+)\.m3u8/i.exec(um[1]) : null;
-        if (lm && sm) lang2suffix[String(lm[1]).toLowerCase()] = sm[1];
+        if (!sm) continue;
+        // v3.1.14 : l'attribut LANGUAGE peut être régional (« fr-FR », « fr-CA »
+        // — VFQ) et certains masters n'écrivent QUE NAME (« Français », «
+        // French »). On normalise : premier mot avant espace/parenthèse/tiret.
+        const lm = /LANGUAGE="([^"]*)"/i.exec(line);
+        const raw = lm ? lm[1] : ((/NAME="([^"]*)"/i.exec(line) || [])[1] || '');
+        const key = String(raw).trim().toLowerCase().split(/[\s(-]/)[0];
+        if (/^(fr|fra|fre|français|francais|french)$/.test(key)) lang2suffix.fr = sm[1];
+        else if (key) lang2suffix[key] = sm[1];
     }
-    const suffix = lang2suffix.fr;
+    const suffix = lang2suffix.fr || lang2suffix.fra || lang2suffix.fre;
     if (!suffix) return '';
     const reVar = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n([^\r\n#][^\r\n]*)/gi;
     let best = '';

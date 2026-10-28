@@ -180,6 +180,7 @@ async function resolveCard(ctx, siteId, card, isMovie) {
                 signal: signal,
                 maxResults: 2,
                 maxAttempts: 4,
+                language: lang, // v3.1.14 : anti-écran-noir uqload au niveau résolveur
             });
         } catch (err) {
             console.warn(
@@ -204,7 +205,8 @@ async function resolveCard(ctx, siteId, card, isMovie) {
                 makeStream({
                     title: composeTitle({ site: site.label || siteId, episode: epNumber, host: r.provider, url: r.url, lang: langLabel }),
                     url: r.url,
-                    quality: /\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct',
+                    // v3.1.14 : qualité lue dans le master au swap muxé uqload
+                    quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct'),
                     language: langLabel,
                     headers: buildHeaders(r.referer, r.ua),
                     subtitles: (r.subtitles || []).map(sub => ({

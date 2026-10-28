@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.13 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T19:44:29.903Z
+ * Fluxio v3.1.14 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T20:16:08.195Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -737,12 +737,16 @@ var __provider = (() => {
     let m;
     while ((m = reMedia.exec(t)) !== null) {
       const line = m[0];
-      const lm = /LANGUAGE="([^"]*)"/i.exec(line);
       const um = /URI="([^"]+)"/i.exec(line);
       const sm = um ? /index-(a\d+)\.m3u8/i.exec(um[1]) : null;
-      if (lm && sm) lang2suffix[String(lm[1]).toLowerCase()] = sm[1];
+      if (!sm) continue;
+      const lm = /LANGUAGE="([^"]*)"/i.exec(line);
+      const raw = lm ? lm[1] : (/NAME="([^"]*)"/i.exec(line) || [])[1] || "";
+      const key = String(raw).trim().toLowerCase().split(/[\s(-]/)[0];
+      if (/^(fr|fra|fre|français|francais|french)$/.test(key)) lang2suffix.fr = sm[1];
+      else if (key) lang2suffix[key] = sm[1];
     }
-    const suffix = lang2suffix.fr;
+    const suffix = lang2suffix.fr || lang2suffix.fra || lang2suffix.fre;
     if (!suffix) return "";
     const reVar = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n([^\r\n#][^\r\n]*)/gi;
     let best = "";
@@ -1173,7 +1177,7 @@ var __provider = (() => {
       if (hit && !forceRefresh && hit.expires > Date.now()) return hit.origins;
       const t = Math.min(timeoutMs, 12e3);
       const first = yield fetchText(base, { timeout: t, headers: HEADERS, signal });
-      const firstOrigin = originOf2(first.finalUrl) || base;
+      const firstOrigin = originOf(first.finalUrl) || base;
       const validated = [];
       if (DLE_MARKERS.test(first.text)) {
         validated.push(firstOrigin);
@@ -1186,7 +1190,7 @@ var __provider = (() => {
               signal
             });
             if (DLE_MARKERS.test(probe.text)) {
-              const origin = originOf2(probe.finalUrl) || candidate;
+              const origin = originOf(probe.finalUrl) || candidate;
               if (validated.indexOf(origin) === -1) validated.push(origin);
               if (validated.length >= 2) break;
             }
@@ -1222,7 +1226,7 @@ var __provider = (() => {
       return candidates.slice(0, 4);
     });
   }
-  function originOf2(url) {
+  function originOf(url) {
     const m = /^(https?:\/\/[^/?#]+)/i.exec(String(url || ""));
     return m ? m[1] : "";
   }
@@ -1381,7 +1385,7 @@ var __provider = (() => {
     return __async(this, null, function* () {
       const page = yield fetchText(pageUrl, { timeout: timeoutMs, headers: HEADERS, signal });
       const html = page.text;
-      const origin = originOf2(page.finalUrl) || originOf2(pageUrl);
+      const origin = originOf(page.finalUrl) || originOf(pageUrl);
       const newsId = parseNewsId(html);
       if (!newsId) throw new Error("news ID introuvable (pas de #serie-config) : " + pageUrl);
       const season2 = parseSeasonNumber(html);
@@ -1466,7 +1470,7 @@ var __provider = (() => {
       const newsId = idm[1];
       const page = yield fetchText(pageUrl, { timeout: timeoutMs, headers: HEADERS, signal });
       const html = page.text;
-      const origin = originOf2(page.finalUrl) || originOf2(pageUrl);
+      const origin = originOf(page.finalUrl) || originOf(pageUrl);
       let embedUrls = {};
       let available = [];
       try {
@@ -2551,7 +2555,7 @@ var __provider = (() => {
   });
 
   // src/hosts/index.js
-  function originOf3(url) {
+  function originOf2(url) {
     const m = /^(https?:\/\/[^/?#]+)/i.exec(String(url || ""));
     return m ? m[1] : "";
   }
@@ -2560,9 +2564,43 @@ var __provider = (() => {
     if (!m) return "";
     return m[1].split(":")[0].toLowerCase();
   }
+  function uqloadMuxedSwap(masterUrl, referer, opts) {
+    return __async(this, null, function* () {
+      const readHeaders = { Referer: referer, "User-Agent": BROWSER_UA, Accept: "*/*" };
+      let masterText = "";
+      let finalUrl = masterUrl;
+      try {
+        const m = yield fetchText(masterUrl, {
+          timeout: Math.min(opts.timeout || 6e3, 3500),
+          headers: readHeaders,
+          signal: opts.signal
+        });
+        masterText = String(m && m.text || "");
+        finalUrl = m && m.finalUrl || masterUrl;
+      } catch (e) {
+        return null;
+      }
+      if (masterText.indexOf("#EXTM3U") === -1) return null;
+      const swapUri = muxedVariantUrl(masterText, opts.language);
+      if (!swapUri) return null;
+      const muxUrl = resolveUrl(finalUrl, swapUri);
+      try {
+        const v = yield fetchText(muxUrl, {
+          timeout: Math.min(opts.timeout || 6e3, 2500),
+          headers: readHeaders,
+          signal: opts.signal
+        });
+        if (!/#EXTINF/i.test(String(v && v.text || ""))) return null;
+      } catch (e) {
+        return null;
+      }
+      console.log("[uqload] variante mux\xE9e servie d\xE8s la r\xE9solution (anti \xE9cran-noir, " + String(opts.language || "").toUpperCase() + ") : " + muxUrl);
+      return { url: muxUrl, quality: bestHlsQuality(masterText) };
+    });
+  }
   function resolveUqload(embedUrl, opts) {
     return __async(this, null, function* () {
-      const selfRef = originOf3(embedUrl) + "/";
+      const selfRef = originOf2(embedUrl) + "/";
       const referers = [selfRef, "https://uqload.is/"];
       let res = null;
       let referer = referers[0];
@@ -2589,19 +2627,27 @@ var __provider = (() => {
       }
       if (!res) throw new Error("embed uqload injoignable (" + selfRef + ")");
       if (UQLOAD_DEAD_RE.test(res.text)) throw new Error("uqload : lien expir\xE9/supprim\xE9");
+      let url = "";
       const packed = findPackedScript(res.text);
       if (packed) {
         const m = FILE_RE.exec(unpack(packed));
-        if (m) return { url: m[1], referer, ua: BROWSER_UA };
+        if (m) url = m[1];
       }
-      const mp4 = MP4_RE.exec(res.text);
-      if (mp4) return { url: mp4[1], referer, ua: BROWSER_UA };
-      throw new Error("aucune URL de flux dans l embed uqload");
+      if (!url) {
+        const mp4 = MP4_RE.exec(res.text);
+        if (mp4) url = mp4[1];
+      }
+      if (!url) throw new Error("aucune URL de flux dans l embed uqload");
+      if (/\.m3u8(\?|$)/i.test(url)) {
+        const swap = yield uqloadMuxedSwap(url, referer, opts);
+        if (swap) return { url: swap.url, referer, ua: BROWSER_UA, quality: swap.quality };
+      }
+      return { url, referer, ua: BROWSER_UA };
     });
   }
   function resolveVidzyFamily(embedUrl, opts, variant) {
     return __async(this, null, function* () {
-      const embedRef = originOf3(embedUrl) + "/";
+      const embedRef = originOf2(embedUrl) + "/";
       const res = yield fetchText(embedUrl, {
         timeout: opts.timeout,
         headers: {
@@ -2658,7 +2704,7 @@ var __provider = (() => {
       const cm = /\/e\/([a-zA-Z0-9]+)/.exec(finalUrl);
       if (!cm) throw new Error("code vid\xE9o introuvable dans la redirection netu : " + finalUrl);
       const code = cm[1];
-      const apiBase = originOf3(finalUrl);
+      const apiBase = originOf2(finalUrl);
       const referer = apiBase + "/e/" + code;
       const data = yield fetchJson(apiBase + "/api/videos/" + code + "/", {
         timeout: opts.timeout,
@@ -2764,7 +2810,7 @@ var __provider = (() => {
         }
       }
       const code = cm[1];
-      const data = yield fetchJson(originOf3(resolved) + "/api/stream", {
+      const data = yield fetchJson(originOf2(resolved) + "/api/stream", {
         method: "POST",
         body: { filecode: code, device: "web" },
         timeout: opts.timeout,
@@ -2922,7 +2968,7 @@ var __provider = (() => {
   }
   function resolveXtremestream(embedUrl, opts) {
     return __async(this, null, function* () {
-      const origin = originOf3(embedUrl) || "https://lecteur2.xtremestream.xyz";
+      const origin = originOf2(embedUrl) || "https://lecteur2.xtremestream.xyz";
       const res = yield fetchText(embedUrl, {
         timeout: opts.timeout,
         headers: { Referer: "https://lecteurvideo.com/", Accept: "text/html,*/*" },
@@ -2948,7 +2994,7 @@ var __provider = (() => {
   }
   function resolvePackedHost(embedUrl, opts) {
     return __async(this, null, function* () {
-      const origin = originOf3(embedUrl);
+      const origin = originOf2(embedUrl);
       const res = yield fetchText(embedUrl, {
         timeout: opts.timeout,
         headers: { Referer: origin + "/", Accept: "text/html,*/*" },
@@ -3014,7 +3060,10 @@ var __provider = (() => {
         referer: out.referer || "",
         ua: out.ua || BROWSER_UA,
         subtitles: out.subtitles || [],
-        weakPlayer: out.weakPlayer === true
+        weakPlayer: out.weakPlayer === true,
+        // v3.1.14 : qualité lue dans le master au moment du swap muxé (uqload)
+        // — les sources l'utilisent telle quelle, sinon « Auto (HLS) ».
+        quality: out.quality || ""
       };
     });
   }
@@ -3068,6 +3117,7 @@ var __provider = (() => {
   var init_hosts = __esm({
     "src/hosts/index.js"() {
       init_http();
+      init_verify();
       init_text();
       init_crypto();
       init_unpack();
@@ -3235,7 +3285,9 @@ var __provider = (() => {
             timeout: HOST_TIMEOUT_MS,
             signal,
             maxResults: 2,
-            maxAttempts: 4
+            maxAttempts: 4,
+            language: lang
+            // v3.1.14 : anti-écran-noir uqload au niveau résolveur
           });
         } catch (err) {
           console.warn(
@@ -3257,7 +3309,8 @@ var __provider = (() => {
             makeStream({
               title: composeTitle({ site: site.label || siteId, episode: epNumber, host: r.provider, url: r.url, lang: langLabel3 }),
               url: r.url,
-              quality: /\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct",
+              // v3.1.14 : qualité lue dans le master au swap muxé uqload
+              quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct"),
               language: langLabel3,
               headers: buildHeaders(r.referer, r.ua),
               subtitles: (r.subtitles || []).map((sub) => ({
@@ -4146,7 +4199,9 @@ var __provider = (() => {
               // < échéance douce 9 s : un host qui pend ne mange pas la fenêtre
               signal,
               maxResults: 2,
-              maxAttempts: 4
+              maxAttempts: 4,
+              language: emb.lang
+              // v3.1.14 : anti-écran-noir uqload au niveau résolveur
             });
           } catch (e) {
             resolved = [];
@@ -4163,7 +4218,8 @@ var __provider = (() => {
                   lang: langLabel2(emb.lang)
                 }),
                 url: r.url,
-                quality: /\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct",
+                // v3.1.14 : qualité lue dans le master au swap muxé uqload
+                quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct"),
                 language: langLabel2(emb.lang),
                 headers: buildHeaders2(r.referer, r.ua),
                 subtitles: (r.subtitles || []).map((sub) => ({
@@ -4631,7 +4687,9 @@ var __provider = (() => {
           timeout: HOST_TIMEOUT_MS2,
           signal: ctx.signal,
           maxResults: 2,
-          maxAttempts: 4
+          maxAttempts: 4,
+          language: lang
+          // v3.1.14 : anti-écran-noir uqload au niveau résolveur
         });
       } catch (err) {
         console.warn(
@@ -4652,7 +4710,8 @@ var __provider = (() => {
               lang: langLabel3
             }),
             url: r.url,
-            quality: /\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct",
+            // v3.1.14 : qualité lue dans le master au swap muxé uqload
+            quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct"),
             language: langLabel3,
             headers: buildHeaders3(r.referer, r.ua),
             subtitles: (r.subtitles || []).map((sub) => ({
@@ -4749,6 +4808,10 @@ var __provider = (() => {
   });
 
   // src/sources/wookafr.js
+  function originOf3(url) {
+    const m = /^(https?:\/\/[^/?#]+)/i.exec(String(url || ""));
+    return m ? m[1] : "";
+  }
   function run3(ctx) {
     return __async(this, null, function* () {
       const { cfg, signal, push, shouldStop } = ctx;
@@ -4896,7 +4959,7 @@ var __provider = (() => {
         signal: ctx.signal
       })).text;
       if (!epHtml || isCfBlock2(epHtml)) return [];
-      const origin = originOf(episodePageUrl) || card._domain;
+      const origin = originOf3(episodePageUrl) || card._domain;
       const candidates = yield collectEmbedCandidates(ctx, epHtml, origin);
       if (!candidates.length) {
         console.log("[wookafr] aucun serveur dans l embed de " + episodePageUrl);
@@ -4918,7 +4981,9 @@ var __provider = (() => {
         try {
           r = yield resolveEmbed(provider, cand.url, {
             timeout: TIMEOUTS2.HOST,
-            signal: ctx.signal
+            signal: ctx.signal,
+            language: cand.lang
+            // v3.1.14 : anti-écran-noir uqload au niveau résolveur
           });
         } catch (err) {
           console.log("[wookafr] host " + provider + " \xE9chou\xE9 : " + (err && err.message ? err.message : err));
@@ -4935,7 +5000,8 @@ var __provider = (() => {
               lang: langLabel3
             }),
             url: r.url,
-            quality: /\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct",
+            // v3.1.14 : qualité lue dans le master au swap muxé uqload
+            quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || "")) ? "Auto (HLS)" : "Direct"),
             language: langLabel3,
             headers: buildHeaders4(r.referer, r.ua),
             subtitles: (r.subtitles || []).map((sub) => ({
@@ -4958,7 +5024,7 @@ var __provider = (() => {
     return __async(this, null, function* () {
       const season2 = parseInt(ctx.season, 10) || 1;
       const episode = parseInt(ctx.episode, 10) || 1;
-      const origin = originOf(card.page_url) || card._domain;
+      const origin = originOf3(card.page_url) || card._domain;
       const seasons = [];
       const btnRe = /<button[^>]*class="[^"]*btgy[^"]*"[^>]*data-season=["'](\d+)["'][^>]*>([\s\S]*?)<\/button>/g;
       let m;

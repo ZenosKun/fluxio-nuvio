@@ -37,6 +37,7 @@
  */
 
 import { fetchText, fetchJson, fetchJsonSafe, resolveUrl } from '../utils/http.js';
+import { bestHlsQuality, muxedVariantUrl } from '../core/verify.js';
 import { base64Decode, base64UrlDecode, utf8Decode } from '../utils/text.js';
 import { aesGcmDecryptJson } from '../utils/crypto.js';
 import { unpack, findPackedScript } from './unpack.js';
@@ -80,6 +81,60 @@ const MP4_RE = /(https:\/\/strm[^"'<>\s]+\/v\.mp4)/;
 const UQLOAD_DEAD_RE =
     /file (?:was|has been) (?:deleted|removed)|file is temporarily unavailable|file not found|this file doesn't exist|deleted because of (?:dmca|copyright)|copyright (?:claim|infringement)/i;
 
+/**
+ * v3.1.14 — anti-écran-noir uqload NIVEAU RÉSOLVEUR.
+ *
+ * La v3.1.13 faisait l'échange master → variante muxée dans la sonde
+ * (verify.js probeOne étape 1.5) : correct en sandbox, mais sur le device la
+ * sonde est souvent coupée AVANT (budget global épuisé par les autres flux,
+ * 10 premiers liens seulement, fetch de validation sans temps restant) → le
+ * master multi-pistes (EXT-X-MEDIA) partait tel quel au lecteur → l'audio
+ * séparé se joue, la vidéo jamais (Fall 2 : écran noir revenu chez
+ * l'utilisateur). L'échange se fait donc DÈS LA RÉSOLUTION : 2 fetch courts,
+ * indépendants du budget de la sonde, avec la langue du flux passée dans
+ * opts.language par les sources.
+ *
+ * Conservateur : master conservé au moindre doute (pas de #EXTM3U, pas de
+ * EXT-X-MEDIA, langue non VF/VFQ/VFF, motif de variante inattendu, variante
+ * injoignable depuis ici) — dans ces cas la sonde v3.1.13 reste le filet.
+ * @returns {Promise<{url: string, quality: string}|null>} null = master conservé
+ */
+async function uqloadMuxedSwap(masterUrl, referer, opts) {
+    const readHeaders = { Referer: referer, 'User-Agent': BROWSER_UA, Accept: '*/*' };
+    let masterText = '';
+    let finalUrl = masterUrl;
+    try {
+        const m = await fetchText(masterUrl, {
+            timeout: Math.min(opts.timeout || 6000, 3500),
+            headers: readHeaders,
+            signal: opts.signal,
+        });
+        masterText = String((m && m.text) || '');
+        finalUrl = (m && m.finalUrl) || masterUrl;
+    } catch (e) {
+        return null; // master injoignable ici : la sonde tranchera sur le lien
+    }
+    if (masterText.indexOf('#EXTM3U') === -1) return null;
+    const swapUri = muxedVariantUrl(masterText, opts.language);
+    if (!swapUri) return null;
+    const muxUrl = resolveUrl(finalUrl, swapUri);
+    try {
+        const v = await fetchText(muxUrl, {
+            timeout: Math.min(opts.timeout || 6000, 2500),
+            headers: readHeaders,
+            signal: opts.signal,
+        });
+        // La variante doit être une playlist média triviale (segments) — pas
+        // une page HTML ni un master : c'est TOUT le but de l'échange.
+        if (!/#EXTINF/i.test(String((v && v.text) || ''))) return null;
+    } catch (e) {
+        return null; // variante injoignable ici : master conservé
+    }
+    console.log('[uqload] variante muxée servie dès la résolution (anti écran-noir, ' +
+        String(opts.language || '').toUpperCase() + ') : ' + muxUrl);
+    return { url: muxUrl, quality: bestHlsQuality(masterText) };
+}
+
 async function resolveUqload(embedUrl, opts) {
     // v3.1.13 (gowaru « Referer self ») : les TLD uqload tournent (.is/.vc/
     // .co/…) — le Referer est dérivé du domaine de l'embed LUI-MÊME, avec
@@ -109,14 +164,26 @@ async function resolveUqload(embedUrl, opts) {
     if (!res) throw new Error('embed uqload injoignable (' + selfRef + ')');
     if (UQLOAD_DEAD_RE.test(res.text)) throw new Error('uqload : lien expiré/supprimé');
 
+    let url = '';
     const packed = findPackedScript(res.text);
     if (packed) {
         const m = FILE_RE.exec(unpack(packed));
-        if (m) return { url: m[1], referer: referer, ua: BROWSER_UA };
+        if (m) url = m[1];
     }
-    const mp4 = MP4_RE.exec(res.text);
-    if (mp4) return { url: mp4[1], referer: referer, ua: BROWSER_UA };
-    throw new Error('aucune URL de flux dans l embed uqload');
+    if (!url) {
+        const mp4 = MP4_RE.exec(res.text);
+        if (mp4) url = mp4[1];
+    }
+    if (!url) throw new Error('aucune URL de flux dans l embed uqload');
+
+    // v3.1.14 : master HLS multi-pistes → variante muxée de la langue DÈS la
+    // résolution (l'échange dans la sonde dépend du budget global — sur TV il
+    // partait souvent avant → écran noir). Langue du flux = opts.language.
+    if (/\.m3u8(\?|$)/i.test(url)) {
+        const swap = await uqloadMuxedSwap(url, referer, opts);
+        if (swap) return { url: swap.url, referer: referer, ua: BROWSER_UA, quality: swap.quality };
+    }
+    return { url: url, referer: referer, ua: BROWSER_UA };
 }
 
 /* ───────────────────────────── vidzy / premium ─────────────────────────── */
@@ -654,6 +721,9 @@ export async function resolveEmbed(provider, embedUrl, opts = {}) {
         ua: out.ua || BROWSER_UA,
         subtitles: out.subtitles || [],
         weakPlayer: out.weakPlayer === true,
+        // v3.1.14 : qualité lue dans le master au moment du swap muxé (uqload)
+        // — les sources l'utilisent telle quelle, sinon « Auto (HLS) ».
+        quality: out.quality || '',
     };
 }
 

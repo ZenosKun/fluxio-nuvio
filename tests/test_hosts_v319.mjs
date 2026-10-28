@@ -140,10 +140,51 @@ globalThis.fetch = async (url) => {
         return { status: 200, url: u, text: async () => PAD + '<html><body>File was deleted</body></html>' };
     }
 
+    // uqload (v3.1.14) : embed packé → master multi-pistes (structure live
+    // Fall 2 : EXT-X-MEDIA Français/English + variantes index-vN-aN muxées a2).
+    if (u.includes('uqload.cx/embed-vf.html')) {
+        return { status: 200, url: u, text: async () => PAD + packedScript('https://strm8.uqload.vc/hls2/x/dp_h/master.m3u8?tk=1') };
+    }
+    if (u.includes('uqload.cx/embed-vost.html')) {
+        return { status: 200, url: u, text: async () => PAD + packedScript('https://strm8.uqload.vc/hls2/x/dp_vost/master.m3u8?tk=2') };
+    }
+    if (u.includes('uqload.cx/embed-dead-variant.html')) {
+        return { status: 200, url: u, text: async () => PAD + packedScript('https://strm8.uqload.vc/hls2/x/dp_dead/master.m3u8?tk=3') };
+    }
+    if (u.includes('uqload.cx/embed-mp4raw.html')) {
+        return {
+            status: 200,
+            url: u,
+            text: async () => PAD + '<html><body><a href="https://strm8.uqload.vc/v.mp4">dl</a></body></html>',
+        };
+    }
+    if (u.includes('/dp_h/master.m3u8') || u.includes('/dp_vost/master.m3u8') || u.includes('/dp_dead/master.m3u8')) {
+        return { status: 200, url: u, text: async () => UQ_MASTER_MOCK };
+    }
+    if (u.includes('/dp_dead/index-v1-a1.m3u8')) {
+        return { status: 404, url: u, text: async () => 'gone' }; // validation → échec
+    }
+    if (u.includes('index-v1-a1.m3u8')) {
+        return { status: 200, url: u, text: async () => '#EXTM3U\n#EXTINF:4.0,\nseg0.ts\n#EXT-X-ENDLIST' };
+    }
+
     return { status: 404, url: u, text: async () => 'not found' };
 };
 
 const R = (p, u) => resolveEmbed(p, u, { timeout: 4000 });
+
+/** Master uqload multi-pistes (structure live vérifiée, cf. worklog Task 32). */
+const UQ_MASTER_MOCK = [
+    '#EXTM3U',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud1",NAME="Français",LANGUAGE="fr",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/x/dp_h/index-a1.m3u8?t=TOK"',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud2",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=NO,CHANNELS="2",URI="https://strm8.uqload.vc/hls2/x/dp_h/index-a2.m3u8?t=TOK"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1920x1040,CODECS="avc1.640028,mp4a.40.2"',
+    'index-v1-a2.m3u8?t=TOK',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=1328x720,CODECS="avc1.640028,mp4a.40.2"',
+    'index-v2-a2.m3u8?t=TOK',
+    '#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=664x360,CODECS="avc1.64001f,mp4a.40.2"',
+    'index-v3-a2.m3u8?t=TOK',
+].join('\n');
 
 /* ── 3. vidmoly ──────────────────────────────────────────────────────────── */
 {
@@ -185,6 +226,37 @@ const R = (p, u) => resolveEmbed(p, u, { timeout: 4000 });
     let err = '';
     try { await R('veev', 'https://veev.to/v/dead'); } catch (e) { err = e.message; }
     t('veev : fichier supprimé → erreur claire', err.indexOf('player packé sans source') !== -1, err);
+}
+
+/* ── 5 bis. uqload anti-écran-noir NIVEAU RÉSOLVEUR (v3.1.14) ─────────── */
+{
+    // Cas utilisateur : « 1080p • VF » audio seul + écran noir — l'échange
+    // v3.1.13 vivait dans la sonde (budget souvent épuisé sur TV) ; il vit
+    // désormais dans le résolveur, AVANT toute dépendance au budget.
+    const vf = await resolveEmbed('uqload', 'https://uqload.cx/embed-vf.html', { timeout: 4000, language: 'vf' });
+    t('uqload VF : variante muxée a1 servie DÈS la résolution (token préservée)',
+        vf && vf.url === 'https://strm8.uqload.vc/hls2/x/dp_h/index-v1-a1.m3u8?t=TOK', JSON.stringify(vf && vf.url));
+    t('uqload VF : qualité réelle lue du master (1920x1040 → 1080p)',
+        vf && vf.quality === '1080p', vf && vf.quality);
+    t('uqload : Referer de lecture = domaine de l embed',
+        vf && vf.referer === 'https://uqload.cx/', vf && vf.referer);
+
+    const vost = await resolveEmbed('uqload', 'https://uqload.cx/embed-vost.html', { timeout: 4000, language: 'vostfr' });
+    t('uqload VOSTFR : master conservé (le muxé fixerait l audio fr)',
+        vost && /dp_vost\/master\.m3u8\?tk=2$/.test(vost.url), JSON.stringify(vost && vost.url));
+
+    const nolang = await resolveEmbed('uqload', 'https://uqload.cx/embed-vf.html', { timeout: 4000 });
+    t('uqload sans langue (rétrocompatibilité) : master conservé',
+        nolang && /dp_h\/master\.m3u8\?tk=1$/.test(nolang.url), JSON.stringify(nolang && nolang.url));
+
+    const deadv = await resolveEmbed('uqload', 'https://uqload.cx/embed-dead-variant.html', { timeout: 4000, language: 'vf' });
+    t('uqload VF : variante muxée injoignable → master conservé (la sonde réessaie)',
+        deadv && /dp_dead\/master\.m3u8\?tk=3$/.test(deadv.url), JSON.stringify(deadv && deadv.url));
+
+    // MP4 brut (v.mp4) : pas de master → chaîne classique intacte.
+    const mp4raw = await resolveEmbed('uqload', 'https://uqload.cx/embed-mp4raw.html', { timeout: 4000, language: 'vf' });
+    t('uqload MP4 brut : aucune réécriture, qualité vide (repli sources)',
+        mp4raw && mp4raw.url === 'https://strm8.uqload.vc/v.mp4' && mp4raw.quality === '', JSON.stringify(mp4raw && mp4raw.url));
 }
 
 /* ── 6. FrenchStream : parseTagNewsIds (structure live xfsearch tagz) ───── */

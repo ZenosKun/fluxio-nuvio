@@ -48,6 +48,16 @@ const MAX_CARDS = 2;
 const MAX_HOST_CANDIDATES = 6;
 const MAX_STREAMS = 3;
 
+/** Origine d'une URL (schéma + hôte) — v3.1.14 : la fonction était UTILISÉE
+ * (episodePageUrl, page_url des cartes) mais jamais définie ici → chaque
+ * résolution de carte wookafr échouait avec « originOf is not defined »
+ * (bug latent depuis v3.1.9, visible dans les logs e2e). Implémentation
+ * identique à hosts/index.js. */
+function originOf(url) {
+    const m = /^(https?:\/\/[^/?#]+)/i.exec(String(url || ''));
+    return m ? m[1] : '';
+}
+
 /* Priorité serveurs de l'embed lecteurvideo (gowaru parseLecteurVideoServers,
  * fix 2026-10 : xtremestream = 1er host VF, ~60-70 % des liens, AVANT uqload
  * « souvent expiré »). */
@@ -305,6 +315,7 @@ async function resolveCard(ctx, card, isMovie) {
             r = await resolveEmbed(provider, cand.url, {
                 timeout: TIMEOUTS.HOST,
                 signal: ctx.signal,
+                language: cand.lang, // v3.1.14 : anti-écran-noir uqload au niveau résolveur
             });
         } catch (err) {
             console.log('[wookafr] host ' + provider + ' échoué : ' +
@@ -322,7 +333,8 @@ async function resolveCard(ctx, card, isMovie) {
                     lang: langLabel,
                 }),
                 url: r.url,
-                quality: /\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct',
+                // v3.1.14 : qualité lue dans le master au swap muxé uqload
+                quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct'),
                 language: langLabel,
                 headers: buildHeaders(r.referer, r.ua),
                 subtitles: (r.subtitles || []).map(sub => ({

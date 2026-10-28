@@ -257,6 +257,7 @@ async function resolveEmbedPage(ctx, emb, push) {
                     signal: signal,
                     maxResults: 2,
                     maxAttempts: 4,
+                    language: emb.lang, // v3.1.14 : anti-écran-noir uqload au niveau résolveur
                 });
             } catch (e) {
                 resolved = [];
@@ -273,7 +274,8 @@ async function resolveEmbedPage(ctx, emb, push) {
                             lang: langLabel(emb.lang),
                         }),
                         url: r.url,
-                        quality: /\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct',
+                        // v3.1.14 : qualité lue dans le master au swap muxé uqload
+                        quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct'),
                         language: langLabel(emb.lang),
                         headers: buildHeaders(r.referer, r.ua),
                         subtitles: (r.subtitles || []).map(sub => ({

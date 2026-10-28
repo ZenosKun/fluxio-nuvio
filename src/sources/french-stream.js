@@ -346,6 +346,7 @@ async function resolveMap(ctx, map, lang, episode) {
             signal: ctx.signal,
             maxResults: 2,
             maxAttempts: 4,
+            language: lang, // v3.1.14 : anti-écran-noir uqload au niveau résolveur
         });
     } catch (err) {
         console.warn(
@@ -367,7 +368,8 @@ async function resolveMap(ctx, map, lang, episode) {
                     lang: langLabel,
                 }),
                 url: r.url,
-                quality: /\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct',
+                // v3.1.14 : qualité lue dans le master au swap muxé uqload
+                quality: r.quality || (/\.m3u8(\?|$)/i.test(String(r.url || '')) ? 'Auto (HLS)' : 'Direct'),
                 language: langLabel,
                 headers: buildHeaders(r.referer, r.ua),
                 subtitles: (r.subtitles || []).map(sub => ({

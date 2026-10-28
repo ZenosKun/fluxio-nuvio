@@ -675,6 +675,14 @@ t('muxedVariantUrl : master sans piste « fr » (VO seule) → pas de réécritu
     const enOnly = UQ_MASTER.replace('LANGUAGE="fr",AUTOSELECT=YES,DEFAULT=YES,', 'LANGUAGE="de",').replace('index-a1.m3u8', 'index-a3.m3u8');
     assert.strictEqual(muxedVariantUrl(enOnly, 'VF'), '');
 });
+t('muxedVariantUrl : LANGUAGE régional « fr-FR » → piste fr (v3.1.14)', () => {
+    const regional = UQ_MASTER.replace('LANGUAGE="fr"', 'LANGUAGE="fr-FR"');
+    assert.strictEqual(muxedVariantUrl(regional, 'VF'), 'https://strm8.uqload.vc/hls2/x/dp_h/index-v1-a1.m3u8?t=TOK');
+});
+t('muxedVariantUrl : repli NAME « Français » sans attribut LANGUAGE (v3.1.14)', () => {
+    const noLang = UQ_MASTER.replace('LANGUAGE="fr",', '');
+    assert.strictEqual(muxedVariantUrl(noLang, 'VF'), 'https://strm8.uqload.vc/hls2/x/dp_h/index-v1-a1.m3u8?t=TOK');
+});
 
 /* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */
 import { bflixLangKey } from '../src/sources/bflix.js';
