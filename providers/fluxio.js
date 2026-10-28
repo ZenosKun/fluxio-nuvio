@@ -1,6 +1,6 @@
 /**
  * Fluxio v3.1.7 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T09:22:38.351Z
+ * Built: 2026-10-28T09:52:06.440Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -2595,7 +2595,20 @@ var __provider = (() => {
       PROVIDER_NAME = "Fluxio";
       TEST_STREAMS = [
         { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
-        { name: "Fluxio \xB7 TEST MP4 (google)", title: "Test MP4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", quality: "Direct", language: "TEST" }
+        {
+          name: "Fluxio \xB7 TEST MP4",
+          title: "Test MP4",
+          url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4",
+          quality: "Direct",
+          language: "TEST",
+          // Headers de test : le lecteur Nuvio bufferise parfois les MP4 progressifs
+          // sans aucun header (alors que les MP4 webflix avec Referer/UA jouent).
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "*/*",
+            "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+          }
+        }
       ];
     }
   });
