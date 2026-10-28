@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.12 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T19:11:59.730Z
+ * Fluxio v3.1.13 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T19:44:29.903Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -727,6 +727,38 @@ var __provider = (() => {
     }
     return best ? resolutionLabel(best) : "";
   }
+  function muxedVariantUrl(masterText, language) {
+    const t = String(masterText || "");
+    const lang = String(language || "").toUpperCase();
+    if (!/#EXT-X-MEDIA/i.test(t)) return "";
+    if (lang.indexOf("VF") !== 0 || lang.indexOf("VOST") === 0) return "";
+    const lang2suffix = {};
+    const reMedia = /#EXT-X-MEDIA:[^\r\n]*/gi;
+    let m;
+    while ((m = reMedia.exec(t)) !== null) {
+      const line = m[0];
+      const lm = /LANGUAGE="([^"]*)"/i.exec(line);
+      const um = /URI="([^"]+)"/i.exec(line);
+      const sm = um ? /index-(a\d+)\.m3u8/i.exec(um[1]) : null;
+      if (lm && sm) lang2suffix[String(lm[1]).toLowerCase()] = sm[1];
+    }
+    const suffix = lang2suffix.fr;
+    if (!suffix) return "";
+    const reVar = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n([^\r\n#][^\r\n]*)/gi;
+    let best = "";
+    let bestBw = -1;
+    while ((m = reVar.exec(t)) !== null) {
+      const url = m[2].trim();
+      if (!/index-v\d+-a\d+\.m3u8/i.test(url)) return "";
+      const bw = parseInt((/BANDWIDTH=(\d+)/i.exec(m[1]) || [0, "0"])[1], 10) || 0;
+      if (bw > bestBw) {
+        bestBw = bw;
+        best = url;
+      }
+    }
+    if (!best) return "";
+    return best.replace(/-a\d+\.m3u8/i, "-" + suffix + ".m3u8");
+  }
   function looksHtml(text) {
     const t = String(text || "").trim();
     if (!t) return false;
@@ -799,6 +831,20 @@ var __provider = (() => {
       let text = res.text || "";
       if (looksHtml(text)) return { ok: false, why: "redirection vers page HTML" };
       const masterQ = bestHlsQuality(text);
+      const swapUri = muxedVariantUrl(text, st.language);
+      if (swapUri) {
+        const muxUrl = resolveUrl(res.finalUrl || st.url, swapUri);
+        try {
+          const muxRes = yield fetchText(muxUrl, { method: "GET", headers, timeout: left() });
+          const muxText = String(muxRes && muxRes.text || "");
+          if (!looksHtml(muxText) && /#EXTINF/i.test(muxText)) {
+            st.url = muxRes.finalUrl || muxUrl;
+            text = muxText;
+            console.log("[verify] variante mux\xE9e langue servie directement (anti \xE9cran-noir) : " + st.url);
+          }
+        } catch (e) {
+        }
+      }
       let base = res.finalUrl || st.url;
       const variant = nextHlsUri(text, "#EXT-X-STREAM-INF");
       if (variant) {
@@ -2516,17 +2562,33 @@ var __provider = (() => {
   }
   function resolveUqload(embedUrl, opts) {
     return __async(this, null, function* () {
-      const referer = "https://uqload.is/";
-      const res = yield fetchText(embedUrl, {
-        timeout: opts.timeout,
-        headers: {
-          Referer: referer,
-          "Sec-Fetch-Dest": "iframe",
-          "Sec-Fetch-Mode": "navigate",
-          "Sec-Fetch-Site": "cross-site"
-        },
-        signal: opts.signal
-      });
+      const selfRef = originOf3(embedUrl) + "/";
+      const referers = [selfRef, "https://uqload.is/"];
+      let res = null;
+      let referer = referers[0];
+      for (const ref of referers) {
+        try {
+          const r = yield fetchText(embedUrl, {
+            timeout: opts.timeout,
+            headers: {
+              Referer: ref,
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Sec-Fetch-Dest": "iframe",
+              "Sec-Fetch-Mode": "navigate",
+              "Sec-Fetch-Site": "cross-site"
+            },
+            signal: opts.signal
+          });
+          if (r && r.text && r.text.length > 400) {
+            res = r;
+            referer = ref;
+            break;
+          }
+        } catch (e) {
+        }
+      }
+      if (!res) throw new Error("embed uqload injoignable (" + selfRef + ")");
+      if (UQLOAD_DEAD_RE.test(res.text)) throw new Error("uqload : lien expir\xE9/supprim\xE9");
       const packed = findPackedScript(res.text);
       if (packed) {
         const m = FILE_RE.exec(unpack(packed));
@@ -3002,7 +3064,7 @@ var __provider = (() => {
       return out;
     });
   }
-  var BROWSER_UA, PROVIDER_ORDER2, FILE_RE, MP4_RE, INLINE_SRC_LOCAL, LULU_HOSTS, LULU_CODE_RE, FILMOON_CODE_RE, JSON_BLOB_RE, JS_LOCATION_RE, JUNK_DIGRAPHS, LULU_HANDOFF, VIDMOLY_TLDS, VIDMOLY_FILE_RE, VIDMOLY_SOURCES_RE, VIDMOLY_LOOSE_RE, VIDMOLY_JS_REDIRECT_RE, RESOLVERS;
+  var BROWSER_UA, PROVIDER_ORDER2, FILE_RE, MP4_RE, UQLOAD_DEAD_RE, INLINE_SRC_LOCAL, LULU_HOSTS, LULU_CODE_RE, FILMOON_CODE_RE, JSON_BLOB_RE, JS_LOCATION_RE, JUNK_DIGRAPHS, LULU_HANDOFF, VIDMOLY_TLDS, VIDMOLY_FILE_RE, VIDMOLY_SOURCES_RE, VIDMOLY_LOOSE_RE, VIDMOLY_JS_REDIRECT_RE, RESOLVERS;
   var init_hosts = __esm({
     "src/hosts/index.js"() {
       init_http();
@@ -3026,6 +3088,7 @@ var __provider = (() => {
       ];
       FILE_RE = /file\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']/;
       MP4_RE = /(https:\/\/strm[^"'<>\s]+\/v\.mp4)/;
+      UQLOAD_DEAD_RE = /file (?:was|has been) (?:deleted|removed)|file is temporarily unavailable|file not found|this file doesn't exist|deleted because of (?:dmca|copyright)|copyright (?:claim|infringement)/i;
       INLINE_SRC_LOCAL = /src\s*:\s*\(function\(s\)\{([\s\S]{0,4000}?)\}\)\("([A-Za-z0-9+/=]+)"\)/;
       LULU_HOSTS = ["luluvdo.com", "luluvid.com"];
       LULU_CODE_RE = /(?:embed[-/]|\/e\/|\/d\/|\/f\/)([A-Za-z0-9]+)/;

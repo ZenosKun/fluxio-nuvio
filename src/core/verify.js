@@ -23,6 +23,14 @@
  *   v3.1.12 : si la tête ne donne rien (moov en FIN de fichier — non
  *   faststart, surtout 4K HEVC), sonde de QUEUE par suffix range (256 Ko
  *   puis 1 Mo) : le lecteur voyait 3840×2160 là où on affichait « Direct ».
+ * - Anti-écran-noir uqload/vidhide (v3.1.13) : leurs masters déclarent des
+ *   pistes audio SÉPARÉES (EXT-X-MEDIA, AAC Mono) alors que les variantes
+ *   vidéo index-v1-aN.m3u8 sont MUXÉES avec UNE langue figée (a2 = anglais
+ *   vérifié live — Fall 2 : écran noir + son qui avance chez l'utilisateur ;
+ *   le français n'existait que dans la rendition séparée). On sert alors
+ *   DIRECTEMENT la variante muxée de la langue du flux (vf → a1 français),
+ *   validée par un fetch avant de remplacer l'URL : playlist média triviale
+ *   vidéo+audio, plus aucun groupe audio à négocier côté lecteur.
  * - Redirections détectées : toute réponse HTML là où on attend un flux
  *   (playlist, variante, MP4) est un échec (ex. proxy → page captcha).
  * - Les en-têtes du flux (Referer, User-Agent…) sont envoyés tels quels.
@@ -130,6 +138,62 @@ export function bestHlsQuality(text) {
     return best ? resolutionLabel(best) : '';
 }
 
+/**
+ * Variante muxée de la bonne langue (v3.1.13, anti-écran-noir uqload/vidhide).
+ *
+ * Retour utilisateur : uqload Fall 2 — « 1080p • VF » mais écran noir, l'audio
+ * avance (AAC Mono FR). Diagnostic live : le master déclare des renditions
+ * audio SÉPARÉES (EXT-X-MEDIA Français/English, Mono) ET des variantes vidéo
+ * index-v1-aN.m3u8 qui sont MUXÉES avec UNE seule langue figée — ici a2
+ * (anglais) pour TOUTES les variantes. Certains lecteurs (ExoPlayer) rendent
+ * alors la rendition audio séparée… et n'affichent jamais la vidéo. Le
+ * français muxé existe pourtant : index-v1-a1.m3u8 (PMT 0x1b AVC + 0xf AAC,
+ * vérifié live). On choisit donc nous-mêmes la variante : le lecteur reçoit
+ * une playlist média triviale (vidéo+audio muxés, zéro groupe, zéro
+ * variante) — le format que TOUS les lecteurs savent jouer.
+ *
+ * Règles (conservateur) :
+ *  - seulement si le master déclare EXT-X-MEDIA (pistes séparées) ;
+ *  - seulement pour une langue FR du flux (vf/vfq/vff — la VF doublée ;
+ *    VOSTFR et VO gardent le master : le muxé fixerait l'audio français) ;
+ *  - suffixe aN mappé par l'attribut LANGUAGE= des MEDIA (jamais déduit du
+ *    hasard : a1 = la langue que le master appelle « fr ») ;
+ *  - toutes les variantes doivent porter le motif index-vN-aN.m3u8 (famille
+ *    vidhide) — sinon on ne touche à rien ;
+ *  - la plus haute BANDWIDTH est choisie (meilleure qualité), query token
+ *    préservée ; le caller valide la playlist avant de remplacer l'URL.
+ * @returns {string} URI de la variante muxée ('' = pas de remplacement)
+ */
+export function muxedVariantUrl(masterText, language) {
+    const t = String(masterText || '');
+    const lang = String(language || '').toUpperCase();
+    if (!/#EXT-X-MEDIA/i.test(t)) return ''; // master simple : rien à régler
+    if (lang.indexOf('VF') !== 0 || lang.indexOf('VOST') === 0) return ''; // VF/VFQ/VFF seulement
+    const lang2suffix = {};
+    const reMedia = /#EXT-X-MEDIA:[^\r\n]*/gi;
+    let m;
+    while ((m = reMedia.exec(t)) !== null) {
+        const line = m[0];
+        const lm = /LANGUAGE="([^"]*)"/i.exec(line);
+        const um = /URI="([^"]+)"/i.exec(line);
+        const sm = um ? /index-(a\d+)\.m3u8/i.exec(um[1]) : null;
+        if (lm && sm) lang2suffix[String(lm[1]).toLowerCase()] = sm[1];
+    }
+    const suffix = lang2suffix.fr;
+    if (!suffix) return '';
+    const reVar = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n([^\r\n#][^\r\n]*)/gi;
+    let best = '';
+    let bestBw = -1;
+    while ((m = reVar.exec(t)) !== null) {
+        const url = m[2].trim();
+        if (!/index-v\d+-a\d+\.m3u8/i.test(url)) return ''; // motif inattendu : on n'invente rien
+        const bw = parseInt((/BANDWIDTH=(\d+)/i.exec(m[1]) || [0, '0'])[1], 10) || 0;
+        if (bw > bestBw) { bestBw = bw; best = url; }
+    }
+    if (!best) return '';
+    return best.replace(/-a\d+\.m3u8/i, '-' + suffix + '.m3u8');
+}
+
 /** Corps qui ressemble à une page HTML plutôt qu'à un flux. */
 function looksHtml(text) {
     const t = String(text || '').trim();
@@ -227,6 +291,26 @@ export async function probeOne(st, timeout, deep) {
     let text = res.text || '';
     if (looksHtml(text)) return { ok: false, why: 'redirection vers page HTML' };
     const masterQ = bestHlsQuality(text);
+
+    // Étape 1.5 (v3.1.13) : anti-écran-noir uqload/vidhide — remplacer le
+    // master multi-pistes par la variante MUXÉE de la langue du flux
+    // (vf → pistes « fr » du master). La playlist candidate est VALIDÉE par
+    // un fetch (200 + #EXTINF) : en cas d'échec on garde le master.
+    const swapUri = muxedVariantUrl(text, st.language);
+    if (swapUri) {
+        const muxUrl = resolveUrl(res.finalUrl || st.url, swapUri);
+        try {
+            const muxRes = await fetchText(muxUrl, { method: 'GET', headers: headers, timeout: left() });
+            const muxText = String((muxRes && muxRes.text) || '');
+            if (!looksHtml(muxText) && /#EXTINF/i.test(muxText)) {
+                st.url = muxRes.finalUrl || muxUrl;
+                text = muxText;
+                console.log('[verify] variante muxée langue servie directement (anti écran-noir) : ' + st.url);
+            }
+        } catch (e) {
+            /* master conservé */
+        }
+    }
 
     // Étape 2 (profonde) : playlist maître → première variante.
     let base = res.finalUrl || st.url;

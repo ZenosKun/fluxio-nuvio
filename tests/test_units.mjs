@@ -8,7 +8,7 @@ import assert from 'node:assert';
 import { buildPlan, kindOf, affinityOf } from '../src/core/plan.js';
 import { createStopper, raceEarlyExit, makeSourceShouldStop } from '../src/core/stopper.js';
 import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, qualityRank, resolutionLabel, TEST_STREAMS } from '../src/core/stream.js';
-import { bestHlsQuality } from '../src/core/verify.js';
+import { bestHlsQuality, muxedVariantUrl } from '../src/core/verify.js';
 import { readConfig } from '../src/utils/settings.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
 import { extractStreamUrls } from '../src/sources/webflix.js';
@@ -636,6 +636,44 @@ t('bestHlsQuality : RESOLUTION=1920x800 (scope) → 1080p, 1280x536 → 720p', (
     assert.strictEqual(bestHlsQuality('#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080\nv.m3u8'), '1080p');
     assert.strictEqual(bestHlsQuality('#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=3840x1608\nv.m3u8'), '4K');
     assert.strictEqual(bestHlsQuality(''), '');
+});
+
+/* ── v3.1.13 : anti-écran-noir uqload — variante muxée de la bonne langue ── */
+const UQ_MASTER = [
+    '#EXTM3U',
+    '',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="Français",LANGUAGE="fr",AUTOSELECT=YES,DEFAULT=YES,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/x/dp_l/index-a1.m3u8?t=TOK"',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="English",LANGUAGE="en",AUTOSELECT=NO,DEFAULT=NO,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/x/dp_l/index-a2.m3u8?t=TOK"',
+    '',
+    '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=587356,RESOLUTION=664x360,CODECS="avc1.64001e,mp4a.40.2",AUDIO="audio0"',
+    'https://strm8.uqload.vc/hls2/x/dp_l/index-v1-a2.m3u8?t=TOK',
+    '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1526892,RESOLUTION=1328x720,CODECS="avc1.640020,mp4a.40.2",AUDIO="audio0"',
+    'https://strm8.uqload.vc/hls2/x/dp_n/index-v1-a2.m3u8?t=TOK',
+    '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3848585,RESOLUTION=1920x1040,CODECS="avc1.640028,mp4a.40.2",AUDIO="audio0"',
+    'https://strm8.uqload.vc/hls2/x/dp_h/index-v1-a2.m3u8?t=TOK',
+].join('\n');
+t('muxedVariantUrl : VF → variante muxée la plus haute BW avec suffixe fr (a1), token préservée', () => {
+    const u = muxedVariantUrl(UQ_MASTER, 'VF');
+    assert.strictEqual(u, 'https://strm8.uqload.vc/hls2/x/dp_h/index-v1-a1.m3u8?t=TOK');
+    assert.strictEqual(muxedVariantUrl(UQ_MASTER, 'VFQ'), u); // VFQ → même cible
+});
+t('muxedVariantUrl : VOSTFR / VO / TEST → pas de réécriture (le muxé fixerait l audio)', () => {
+    assert.strictEqual(muxedVariantUrl(UQ_MASTER, 'VOSTFR'), '');
+    assert.strictEqual(muxedVariantUrl(UQ_MASTER, 'VO'), '');
+    assert.strictEqual(muxedVariantUrl(UQ_MASTER, 'TEST'), '');
+    assert.strictEqual(muxedVariantUrl(UQ_MASTER, ''), '');
+});
+t('muxedVariantUrl : master sans EXT-X-MEDIA → rien à faire', () => {
+    const simple = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\nhttps://s.example/index-v1-a2.m3u8?t=K';
+    assert.strictEqual(muxedVariantUrl(simple, 'VF'), '');
+});
+t('muxedVariantUrl : motif de variante inattendu → on ne touche à rien', () => {
+    const odd = UQ_MASTER.replace('dp_h/index-v1-a2.m3u8', 'dp_h/ep-1.m3u8');
+    assert.strictEqual(muxedVariantUrl(odd, 'VF'), '');
+});
+t('muxedVariantUrl : master sans piste « fr » (VO seule) → pas de réécriture', () => {
+    const enOnly = UQ_MASTER.replace('LANGUAGE="fr",AUTOSELECT=YES,DEFAULT=YES,', 'LANGUAGE="de",').replace('index-a1.m3u8', 'index-a3.m3u8');
+    assert.strictEqual(muxedVariantUrl(enOnly, 'VF'), '');
 });
 
 /* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */

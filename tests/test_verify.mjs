@@ -6,11 +6,36 @@ let pass = 0, fail = 0;
 const ok = (n, c, d = '') => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : ' → ' + d)); };
 const calls = [];
 const h = ct => ({ get: k => (String(k).toLowerCase() === 'content-type' ? ct : '') });
+/** Master uqload synthétique : renditions audio séparées (fr=a1, en=a2) +
+ * variantes vidéo MUXÉES index-v1-a2 (anglais) — la structure réelle constatée
+ * live sur strm8.uqload.vc (Fall 2 : écran noir). lo = variante basse, hi =
+ * haute BANDWIDTH (le swap cible la hi). */
+const UQ_MOCK_MASTER = (lo, hi) => [
+  '#EXTM3U',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="Français",LANGUAGE="fr",AUTOSELECT=YES,DEFAULT=YES,CHANNELS="1",URI="https://cdn.example/' + lo + '/index-a1.m3u8?t=K"',
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="English",LANGUAGE="en",AUTOSELECT=NO,DEFAULT=NO,CHANNELS="1",URI="https://cdn.example/' + lo + '/index-a2.m3u8?t=K"',
+  '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=587356,RESOLUTION=664x360,CODECS="avc1.64001e,mp4a.40.2",AUDIO="audio0"',
+  'https://cdn.example/' + lo + '/index-v1-a2.m3u8?t=K',
+  '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3848585,RESOLUTION=1920x1040,CODECS="avc1.640028,mp4a.40.2",AUDIO="audio0"',
+  'https://cdn.example/' + hi + '/index-v1-a2.m3u8?t=K',
+].join('\n');
 globalThis.fetch = async (url, o = {}) => {
   calls.push([o.method, url, o.headers || {}]);
   if (url.includes('dead.m3u8')) return { status: 403, url, text: async () => 'forbidden' };
   if (url.includes('html.m3u8')) return { status: 200, url, text: async () => '<html>captcha</html>' };
   if (url.includes('good.m3u8')) return { status: 200, url, text: async () => '#EXTM3U\n#EXT-X-VERSION:3' };
+  // v3.1.13 — anti-écran-noir uqload : master multi-pistes (EXT-X-MEDIA +
+  // variantes index-vN-aN.m3u8 muxées -a2 anglais) → la sonde doit servir la
+  // variante muxée de la langue (-a1 fr), validée par un fetch.
+  if (url.includes('uqok.m3u8')) return { status: 200, url, text: async () => UQ_MOCK_MASTER('dp1', 'dp2') };
+  if (url.includes('dp2/index-v1-a1.m3u8')) return { status: 200, url, text: async () => '#EXTM3U\n#EXTINF:5.0,\nseg-mux.ts' };
+  if (url.includes('seg-mux.ts')) return { status: 200, url, headers: h('video/mp2t'), text: async () => '' };
+  if (url.includes('dp1/index-v1-a2.m3u8')) return { status: 200, url, text: async () => '#EXTM3U\n#EXTINF:5.0,\nseg-dp1.ts' };
+  if (url.includes('seg-dp1.ts')) return { status: 200, url, headers: h('video/mp2t'), text: async () => '' };
+  if (url.includes('uqfail.m3u8')) return { status: 200, url, text: async () => UQ_MOCK_MASTER('dp3', 'dp3') };
+  if (url.includes('dp3/index-v1-a1.m3u8')) return { status: 404, url, text: async () => 'not found' };
+  if (url.includes('dp3/index-v1-a2.m3u8')) return { status: 200, url, text: async () => '#EXTM3U\n#EXTINF:5.0,\nseg-dp3.ts' };
+  if (url.includes('seg-dp3.ts')) return { status: 200, url, headers: h('video/mp2t'), text: async () => '' };
   if (url.includes('nohead.mp4')) return { status: 405, url, text: async () => '' };
   if (url.includes('gone.mp4')) return { status: 404, url, text: async () => '' };
   // v3.1.7 — sonde profonde (variante + segment) et redirections HTML
@@ -180,6 +205,23 @@ ok('verify conserve le tri weak, ⚠ non doublé', outWeak[1].url.includes('w2.e
   ok('fastflux mensonger + moov final → conservé + « 4K » (combo réel)', r3.ok === true && r3.quality === '4K', JSON.stringify(r3));
   const q5 = await verifyStreams(finalizeStreams([mk('W · Discovery 4K · MP4 · VF', 'https://t.example/tail4k.mp4', 'webflix')], cfg), { remainingMs: 20000 });
   ok('verifyStreams propage la qualité de la sonde de queue', q5.length === 1 && q5[0].quality === '4K', JSON.stringify(q5.map(s => s.quality)));
+}
+// v3.1.13 — anti-écran-noir uqload : le master multi-pistes (pistes audio
+// séparées + variantes MUXÉES -a2 anglais) est remplacé par la variante muxée
+// de la langue du flux — structure réelle vérifiée live sur strm8.uqload.vc
+// (Fall 2 : son VF + écran noir ; le français muxé index-v1-a1.m3u8 répond
+// PMT vidéo AVC + AAC, vérifié live).
+{
+  const outMux = await verifyStreams(finalizeStreams([mk('W · uqload · HLS · VF', 'https://u.example/uqok.m3u8', 'uqload')], cfg), { remainingMs: 20000 });
+  ok('master uqload multi-pistes → variante muxée FR servie directement', outMux.length === 1 && outMux[0].url.includes('dp2/index-v1-a1.m3u8'), outMux.map(s => s.url).join(' | '));
+  ok('qualité conservée depuis le master (1920x1040 → 1080p)', outMux.length === 1 && outMux[0].quality === '1080p', outMux[0] && outMux[0].quality);
+  const muxCall = calls.find(c => c[1].includes('dp2/index-v1-a1.m3u8'));
+  ok('playlist muxée VALIDÉE par un fetch avant le remplacement', !!muxCall, JSON.stringify(muxCall && muxCall[1]));
+  const outFail = await verifyStreams(finalizeStreams([mk('W · uqload fail · HLS · VF', 'https://u.example/uqfail.m3u8', 'uqload')], cfg), { remainingMs: 20000 });
+  ok('variante -a1 indisponible (404) → master conservé, lien vivant', outFail.length === 1 && outFail[0].url.includes('uqfail.m3u8'), outFail.map(s => s.url).join(' | '));
+  const vost = makeStream({ title: 'W · uqload · HLS · VOSTFR', url: 'https://u.example/uqok.m3u8', quality: 'Auto (HLS)', language: 'VOSTFR', _langKey: 'vostfr', _site: 'uqload' });
+  const outVost = await verifyStreams(finalizeStreams([vost], cfg), { remainingMs: 20000 });
+  ok('VOSTFR → master conservé (le muxé fixerait l audio français)', outVost.length === 1 && outVost[0].url.includes('uqok.m3u8'), outVost.map(s => s.url).join(' | '));
 }
 console.log(`\nRésultat : ${pass} OK, ${fail} échec(s)`);
 process.exit(fail ? 1 : 0);

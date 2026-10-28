@@ -74,18 +74,40 @@ const MP4_RE = /(https:\/\/strm[^"'<>\s]+\/v\.mp4)/;
 
 /* ──────────────────────────────── uqload ───────────────────────────────── */
 
+/** Stubs d'expiration affichés par uqload sur les liens morts (gowaru :
+ * « détection restrictions / expirés ») — on rejette tôt au lieu de produire
+ * un « aucune URL de flux » générique ; la sonde retirera le lien. */
+const UQLOAD_DEAD_RE =
+    /file (?:was|has been) (?:deleted|removed)|file is temporarily unavailable|file not found|this file doesn't exist|deleted because of (?:dmca|copyright)|copyright (?:claim|infringement)/i;
+
 async function resolveUqload(embedUrl, opts) {
-    const referer = 'https://uqload.is/';
-    const res = await fetchText(embedUrl, {
-        timeout: opts.timeout,
-        headers: {
-            Referer: referer,
-            'Sec-Fetch-Dest': 'iframe',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'cross-site',
-        },
-        signal: opts.signal,
-    });
+    // v3.1.13 (gowaru « Referer self ») : les TLD uqload tournent (.is/.vc/
+    // .co/…) — le Referer est dérivé du domaine de l'embed LUI-MÊME, avec
+    // repli sur l'ancien https://uqload.is/ fixe si la page ne répond pas.
+    const selfRef = originOf(embedUrl) + '/';
+    const referers = [selfRef, 'https://uqload.is/'];
+    let res = null;
+    let referer = referers[0];
+    for (const ref of referers) {
+        try {
+            const r = await fetchText(embedUrl, {
+                timeout: opts.timeout,
+                headers: {
+                    Referer: ref,
+                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Sec-Fetch-Dest': 'iframe',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'cross-site',
+                },
+                signal: opts.signal,
+            });
+            if (r && r.text && r.text.length > 400) { res = r; referer = ref; break; }
+        } catch (e) {
+            /* TLD suivant */
+        }
+    }
+    if (!res) throw new Error('embed uqload injoignable (' + selfRef + ')');
+    if (UQLOAD_DEAD_RE.test(res.text)) throw new Error('uqload : lien expiré/supprimé');
 
     const packed = findPackedScript(res.text);
     if (packed) {
