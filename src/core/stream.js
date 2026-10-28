@@ -52,20 +52,7 @@ export function composeTitle({ site, episode, host, url, lang }) {
 /** Flux publics de test : si eux non plus ne se lisent pas, le problème est le lecteur, pas les sources. */
 export const TEST_STREAMS = [
     { name: 'Fluxio · TEST HLS (mux.dev)', title: 'Test HLS', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', quality: 'Auto (HLS)', language: 'TEST' },
-    {
-        name: 'Fluxio · TEST MP4',
-        title: 'Test MP4',
-        url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4',
-        quality: 'Direct',
-        language: 'TEST',
-        // Headers de test : le lecteur Nuvio bufferise parfois les MP4 progressifs
-        // sans aucun header (alors que les MP4 webflix avec Referer/UA jouent).
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            Accept: '*/*',
-            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-        },
-    },
+    { name: 'Fluxio · TEST MP4', title: 'Test MP4', url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4', quality: 'Direct', language: 'TEST' },
 ];
 
 /** Nom affiché dans la liste (l'app n'affiche pas `title`) : Fluxio · source · hôte. */
