@@ -108,11 +108,15 @@ export function readConfig() {
     // bloqués (DNS FAI fréquent sur les sites de streaming), toutes les
     // sources pendent, et dépasser le timeout de l'app Nuvio transforme une
     // liste vide exploitable en erreur « impossible de charger les streams ».
-    const budgetSec = parseInt(String(s.budgetSec || '25'), 10);
+    // Sans timer (fetch bloquant), la dernière requête en vol ne peut pas être
+    // coupée : budget par défaut plus court (18 s) pour rester sous la limite.
+    const budgetSec = parseInt(String(s.budgetSec || ''), 10);
     const budgetMs =
         Number.isFinite(budgetSec) && budgetSec >= 10 && budgetSec <= 30
             ? budgetSec * 1000
-            : 25000;
+            : typeof setTimeout === 'function'
+                ? 25000
+                : 18000;
 
     return {
         serverUrl,

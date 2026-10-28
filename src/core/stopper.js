@@ -9,7 +9,7 @@
  *
  *   - échéance douce (5 s) atteinte avec au moins 1 flux pertinent déjà
  *     collecté : un site bloqué ou très lent ne retarde plus le rendu ;
- *   - budget dur (50 s) épuisé : rendre ce qui existe, quoi qu'il arrive.
+ *   - budget dur (25 s, 18 s sans timers) épuisé : rendre ce qui existe, quoi qu'il arrive.
  *
  * earlyExit=false (réglage) : tout attendre jusqu'au budget (comportement v2).
  * Runtimes sans setTimeout (TV) : pas de course possible, le stopper sert

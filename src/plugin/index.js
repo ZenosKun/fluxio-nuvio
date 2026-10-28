@@ -17,7 +17,7 @@ import { extractStreams } from '../core/orchestrator.js';
 import { createProvider, createSettingsLayout } from '../utils/provider.js';
 
 module.exports = {
-    getStreams: createProvider('v3', extractStreams, { timeout: 60000 }),
+    getStreams: createProvider('v3', extractStreams, { timeout: 27000 }),
     onSettings: createSettingsLayout([
         { type: 'header', label: 'Lecture directe multi-sources (aucun serveur requis)' },
         {

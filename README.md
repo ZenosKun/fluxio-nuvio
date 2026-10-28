@@ -16,14 +16,14 @@ Films, séries et animés VF/VOSTFR en lecture directe sur [Nuvio](https://nuvio
 | Matching | titre brut → faux matches | ancré TMDB | ancré TMDB + plages d'épisodes |
 | 2e épisode d'une série | re-complet | re-complet | accéléré (caches TMDB + recherche) |
 
-Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, variance réseau non négligeable) : Fight Club **3-5 flux en 2,7 – 6 s** (toutes les qualités des sources réactives), SAO S1E5 **2-3 flux**, TLOU S1E1/S1E2 **4-5 flux** chacun, NAZA 1 flux (pire cas ~40 s : documentaire absent des sources, rendu avant le budget 50 s).
+Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, variance réseau non négligeable) : Fight Club **3-5 flux en 2,7 – 6 s** (toutes les qualités des sources réactives), SAO S1E5 **2-3 flux**, TLOU S1E1/S1E2 **4-5 flux** chacun, NAZA 1 flux (pire cas ~40 s : documentaire absent des sources, rendu avant le budget (25 s, 18 s sans timers)).
 
 ## Architecture
 
 ```
                           ┌────────────────────────────────┐
    Nuvio (movie/tv)  ───► │ ORCHESTRATEUR (src/core)       │
-                          │ budget 50 s · anti-blocage 5 s │
+                          │ budget 25 s (18 s TV) · anti-blocage 5 s │
                           │ vagues 1/2 · collecte partagée │
                           └───────┬───────────────┬────────┘
              tier direct (immédiat)│              │tier recherche (dès TMDB)
@@ -110,3 +110,12 @@ La régression d'un parseur se fait **offline en secondes** contre `tests/fixtur
 ## Licence
 
 GPL-3.0 — voir [LICENSE](LICENSE) et [NOTICE](NOTICE) (portage JS des extracteurs de [sestudio](https://github.com/DSestu/sestudio) © David Sestu, sources Gowaru utilisées comme référence de protocoles).
+
+## Runtimes à fetch bloquant (NuvioTV, Desktop) — v3.1.3
+
+Sans timer, aucune requête en cours ne peut être interrompue. Deux garde-fous dans `src/utils/http.js` :
+
+- **Budget global** : plus aucune requête n'est lancée à moins de 1,5 s de l'échéance, et chaque timeout est plafonné au temps restant (25 s avec timers, 18 s sans).
+- **Disjoncteur par hôte** : après un échec réseau/timeout, l'hôte est écarté 2 min — un domaine bloqué ne coûte qu'un timeout.
+
+`npm run test:blocking` simule ce runtime (horloge virtuelle). Avant 3.1.3, le provider imposait 60 s et écrasait le budget de 25 s.

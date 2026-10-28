@@ -1,5 +1,5 @@
 /**
- * Fluxio v3.1.2 — multi-sources FR pour Nuvio
+ * Fluxio v3.1.3 — multi-sources FR pour Nuvio
  * Built: 2026-10-28T07:06:37.276Z
  */
 var __provider = (() => {
@@ -83,8 +83,8 @@ var __provider = (() => {
     const sources = String(s.sources || s.sites || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).join(",");
     const timeoutSec = parseInt(String(s.timeoutSec || "10"), 10);
     const timeoutMs = Number.isFinite(timeoutSec) && timeoutSec >= 8 && timeoutSec <= 90 ? timeoutSec * 1e3 : 1e4;
-    const budgetSec = parseInt(String(s.budgetSec || "25"), 10);
-    const budgetMs = Number.isFinite(budgetSec) && budgetSec >= 10 && budgetSec <= 30 ? budgetSec * 1e3 : 25e3;
+    const budgetSec = parseInt(String(s.budgetSec || ""), 10);
+    const budgetMs = Number.isFinite(budgetSec) && budgetSec >= 10 && budgetSec <= 30 ? budgetSec * 1e3 : typeof setTimeout === "function" ? 25e3 : 18e3;
     return {
       serverUrl,
       language,
@@ -129,7 +129,42 @@ var __provider = (() => {
     }
     return null;
   }
+  var govDeadline = 0;
+  var govDead = {};
+  function setHttpDeadline(ts) {
+    govDeadline = ts > 0 ? ts : 0;
+  }
+  function govHost(url) {
+    var m = /^https?:\/\/([^\/?#]+)/i.exec(String(url));
+    return m ? m[1].toLowerCase() : "";
+  }
+  function govGate(url, timeout) {
+    var host = govHost(url), until = govDead[host];
+    if (until && Date.now() < until) throw new HttpError("h\xF4te injoignable (disjoncteur) : " + host, 0, url);
+    if (govDeadline) {
+      var remaining = govDeadline - Date.now();
+      if (remaining < 1500) throw new HttpError("budget \xE9puis\xE9 avant : " + url, 0, url);
+      return Math.min(timeout, remaining);
+    }
+    return timeout;
+  }
+  function govNoteFailure(url, err) {
+    if (err && err.status !== void 0 && err.status !== 0) return;
+    if (err && /disjoncteur|budget \xE9puis\xE9/.test(String(err.message))) return;
+    govDead[govHost(url)] = Date.now() + 12e4;
+  }
   function raceFetch(url, fetchOptions, timeout, action) {
+    return __async(this, null, function* () {
+      const clamped = govGate(url, timeout);
+      try {
+        return yield raceFetchInner(url, __spreadProps(__spreadValues({}, fetchOptions), { timeout: clamped }), clamped, action);
+      } catch (err) {
+        govNoteFailure(url, err);
+        throw err;
+      }
+    });
+  }
+  function raceFetchInner(url, fetchOptions, timeout, action) {
     return __async(this, null, function* () {
       const controller = makeController(fetchOptions.signal);
       const opts = __spreadProps(__spreadValues({}, fetchOptions), { signal: controller ? controller.signal : void 0 });
@@ -3805,7 +3840,8 @@ var __provider = (() => {
       const cfg = readConfig();
       const signal = options && options.signal ? options.signal : null;
       const started = Date.now();
-      const budgetMs = Number(options.budgetMs) > 0 ? Number(options.budgetMs) : cfg.budgetMs;
+      const budgetMs = Number(options.budgetMs) > 0 ? Math.min(Number(options.budgetMs), cfg.budgetMs) : cfg.budgetMs;
+      setHttpDeadline(started + budgetMs);
       const stopper = createStopper({
         startedAt: started,
         hardMs: budgetMs,
@@ -4170,7 +4206,7 @@ var __provider = (() => {
       init_orchestrator();
       init_provider();
       module.exports = {
-        getStreams: createProvider("v3", extractStreams, { timeout: 6e4 }),
+        getStreams: createProvider("v3", extractStreams, { timeout: 27e3 }),
         onSettings: createSettingsLayout([
           { type: "header", label: "Lecture directe multi-sources (aucun serveur requis)" },
           {

@@ -52,7 +52,62 @@ function makeController(externalSignal) {
  * Si AbortController existe, on avorte la requête sous-jacente ; sinon la
  * promesse fetch est abandonnée (la course renvoie l'erreur de toute façon).
  */
+
+/* ── Gouverneur de requêtes ───────────────────────────────────────────────
+ * Runtimes à fetch BLOQUANT (TV / Desktop) : aucun timer ne peut interrompre
+ * une requête en cours, et chaque hôte mort coûte un timeout complet. Sans
+ * garde-fou, N miroirs morts × timeout dépassent largement le budget et l'app
+ * affiche « impossible de charger les streams ».
+ *   1. Budget global : plus AUCUNE requête n'est lancée à moins de 1,5 s de
+ *      l'échéance, et le timeout de chaque requête est plafonné au temps restant.
+ *   2. Disjoncteur par hôte : après un échec réseau/timeout, l'hôte est écarté
+ *      2 minutes — un domaine bloqué ne coûte qu'UN timeout, pas dix.
+ */
+let govDeadline = 0;
+const govDead = {};
+const GOV_DEAD_MS = 120000;
+const GOV_MIN_SLICE_MS = 1500;
+
+export function setHttpDeadline(ts) {
+    govDeadline = ts > 0 ? ts : 0;
+}
+
+function govHost(url) {
+    const m = /^https?:\/\/([^\/?#]+)/i.exec(String(url));
+    return m ? m[1].toLowerCase() : '';
+}
+
+function govGate(url, timeout) {
+    const host = govHost(url);
+    const until = govDead[host];
+    if (until && Date.now() < until) {
+        throw new HttpError('hôte injoignable (disjoncteur) : ' + host, 0, url);
+    }
+    if (govDeadline) {
+        const remaining = govDeadline - Date.now();
+        if (remaining < GOV_MIN_SLICE_MS) throw new HttpError('budget épuisé avant : ' + url, 0, url);
+        return Math.min(timeout, remaining);
+    }
+    return timeout;
+}
+
+function govNoteFailure(url, err) {
+    if (err && err.status !== undefined && err.status !== 0) return;
+    if (err && /disjoncteur|budget épuisé/.test(String(err.message))) return;
+    govDead[govHost(url)] = Date.now() + GOV_DEAD_MS;
+}
+
 async function raceFetch(url, fetchOptions, timeout, action) {
+    const clamped = govGate(url, timeout);
+    try {
+        return await raceFetchInner(url, { ...fetchOptions, timeout: clamped }, clamped, action);
+    } catch (err) {
+        govNoteFailure(url, err);
+        throw err;
+    }
+}
+
+async function raceFetchInner(url, fetchOptions, timeout, action) {
     const controller = makeController(fetchOptions.signal);
     const opts = { ...fetchOptions, signal: controller ? controller.signal : undefined };
 

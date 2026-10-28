@@ -23,6 +23,7 @@
  */
 
 import { readConfig } from '../utils/settings.js';
+import { setHttpDeadline } from '../utils/http.js';
 import { getTmdbMeta } from '../meta/tmdb.js';
 import { rankCards } from '../utils/match.js';
 import { resolveSources } from './registry.js';
@@ -49,8 +50,11 @@ export async function extractStreams(tmdbId, mediaType, season, episode, options
 
     // Budget interne : à l'échéance on rend ce qui est déjà trouvé au lieu
     // de tout jeter (le provider garde en plus son filet de sécurité).
+    // Le budget du réglage plafonne celui du provider (avant : le 60 s du
+    // provider écrasait silencieusement le 25 s annoncé).
     const budgetMs =
-        Number(options.budgetMs) > 0 ? Number(options.budgetMs) : cfg.budgetMs;
+        Number(options.budgetMs) > 0 ? Math.min(Number(options.budgetMs), cfg.budgetMs) : cfg.budgetMs;
+    setHttpDeadline(started + budgetMs);
     const stopper = createStopper({
         startedAt: started,
         hardMs: budgetMs,
