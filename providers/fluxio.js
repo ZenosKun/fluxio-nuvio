@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.6 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T07:06:37.276Z
+ * Fluxio v3.1.7 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T09:22:38.351Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -133,29 +133,30 @@ var __provider = (() => {
     }
     return null;
   }
-  var govDeadline = 0;
-  var govDead = {};
   function setHttpDeadline(ts) {
     govDeadline = ts > 0 ? ts : 0;
   }
   function govHost(url) {
-    var m = /^https?:\/\/([^\/?#]+)/i.exec(String(url));
+    const m = /^https?:\/\/([^\/?#]+)/i.exec(String(url));
     return m ? m[1].toLowerCase() : "";
   }
   function govGate(url, timeout) {
-    var host = govHost(url), until = govDead[host];
-    if (until && Date.now() < until) throw new HttpError("h\xF4te injoignable (disjoncteur) : " + host, 0, url);
+    const host = govHost(url);
+    const until = govDead[host];
+    if (until && Date.now() < until) {
+      throw new HttpError("h\xF4te injoignable (disjoncteur) : " + host, 0, url);
+    }
     if (govDeadline) {
-      var remaining = govDeadline - Date.now();
-      if (remaining < 1500) throw new HttpError("budget \xE9puis\xE9 avant : " + url, 0, url);
+      const remaining = govDeadline - Date.now();
+      if (remaining < GOV_MIN_SLICE_MS) throw new HttpError("budget \xE9puis\xE9 avant : " + url, 0, url);
       return Math.min(timeout, remaining);
     }
     return timeout;
   }
   function govNoteFailure(url, err) {
     if (err && err.status !== void 0 && err.status !== 0) return;
-    if (err && /disjoncteur|budget \xE9puis\xE9/.test(String(err.message))) return;
-    govDead[govHost(url)] = Date.now() + 12e4;
+    if (err && /disjoncteur|budget épuisé/.test(String(err.message))) return;
+    govDead[govHost(url)] = Date.now() + GOV_DEAD_MS;
   }
   function raceFetch(url, fetchOptions, timeout, action) {
     return __async(this, null, function* () {
@@ -170,25 +171,39 @@ var __provider = (() => {
   }
   function raceFetchInner(url, fetchOptions, timeout, action) {
     return __async(this, null, function* () {
-      const controller = makeController(fetchOptions.signal);
-      const opts = __spreadProps(__spreadValues({}, fetchOptions), { signal: controller ? controller.signal : void 0 });
+      const noBody = fetchOptions._noBody === true;
+      const rest = __spreadValues({}, fetchOptions);
+      delete rest._noBody;
+      const controller = makeController(rest.signal);
+      const opts = __spreadProps(__spreadValues({}, rest), { signal: controller ? controller.signal : void 0 });
       const work = (() => __async(this, null, function* () {
         const res = yield fetch(url, opts);
         if (!res || typeof res.status !== "number") {
           throw new HttpError("r\xE9ponse invalide du runtime fetch", 0, url);
         }
         let text = "";
+        if (!noBody) {
+          try {
+            text = yield res.text();
+          } catch (e) {
+            text = "";
+          }
+        }
+        let contentType = "";
         try {
-          text = yield res.text();
+          const h = res.headers;
+          if (h) {
+            if (typeof h.get === "function") contentType = String(h.get("content-type") || "");
+            else if (h["content-type"]) contentType = String(h["content-type"]);
+          }
         } catch (e) {
-          text = "";
         }
         let finalUrl = url;
         try {
           if (res.url && typeof res.url === "string") finalUrl = res.url;
         } catch (e) {
         }
-        return { res, text, finalUrl };
+        return { res, text, finalUrl, contentType };
       }))();
       if (typeof setTimeout !== "function") {
         return action(yield work);
@@ -240,7 +255,40 @@ var __provider = (() => {
         const detail = out.text ? out.text.slice(0, 200) : "";
         throw new HttpError("HTTP " + out.res.status + (detail ? " \u2014 " + detail : ""), out.res.status, url);
       }
-      return { text: out.text, status: out.res.status, finalUrl: out.finalUrl };
+      return {
+        text: out.text,
+        status: out.res.status,
+        finalUrl: out.finalUrl,
+        contentType: out.contentType || ""
+      };
+    });
+  }
+  function fetchStatus(_0) {
+    return __async(this, arguments, function* (url, options = {}) {
+      const timeout = options.timeout || 2e4;
+      let out;
+      try {
+        out = yield raceFetch(
+          url,
+          {
+            method: options.method || "GET",
+            headers: __spreadValues(__spreadValues({}, DEFAULT_HEADERS), options.headers || {}),
+            body: options.body !== void 0 ? options.body : void 0,
+            timeout,
+            _noBody: options.noBody === true
+          },
+          timeout,
+          (won) => won
+        );
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError("r\xE9seau injoignable: " + (err && err.message ? err.message : String(err)), 0, url);
+      }
+      return {
+        status: out.res.status,
+        contentType: out.contentType || "",
+        finalUrl: out.finalUrl
+      };
     });
   }
   function fetchJson(_0) {
@@ -333,7 +381,7 @@ var __provider = (() => {
       }
     };
   }
-  var DEFAULT_HEADERS, HttpError;
+  var DEFAULT_HEADERS, HttpError, govDeadline, govDead, GOV_DEAD_MS, GOV_MIN_SLICE_MS;
   var init_http = __esm({
     "src/utils/http.js"() {
       DEFAULT_HEADERS = {
@@ -348,6 +396,158 @@ var __provider = (() => {
           this.url = url || "";
         }
       };
+      govDeadline = 0;
+      govDead = {};
+      GOV_DEAD_MS = 12e4;
+      GOV_MIN_SLICE_MS = 1500;
+    }
+  });
+
+  // src/core/verify.js
+  function looksHtml(text) {
+    const t = String(text || "").trim();
+    if (!t) return false;
+    const head = t.slice(0, 400);
+    return t.charAt(0) === "<" || /<html[\s>]/i.test(head) || /<!doctype\s+html/i.test(head);
+  }
+  function nextHlsUri(text, tag) {
+    const re = new RegExp("^" + String(tag).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const lines = String(text || "").split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      if (!re.test(lines[i].trim())) continue;
+      for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j].trim();
+        if (!l || l.charAt(0) === "#") continue;
+        return l;
+      }
+    }
+    return "";
+  }
+  function neutralErr(err) {
+    return /budget épuisé|disjoncteur/.test(String(err && err.message || ""));
+  }
+  function probeOne(st, timeout, deep) {
+    return __async(this, null, function* () {
+      const isHls = /\.m3u8(\?|$)/i.test(String(st.url || ""));
+      const headers = Object.assign({ Accept: "*/*" }, st.headers || {});
+      const deadline = Date.now() + Math.max(800, timeout);
+      const left = () => Math.max(400, deadline - Date.now());
+      const statusOf = (err) => err && err.status ? err.status : 0;
+      if (!isHls) {
+        try {
+          const res2 = yield fetchText(st.url, { method: "HEAD", headers, timeout });
+          if (looksHtml(res2.text) || /text\/html/i.test(res2.contentType || "")) {
+            return { ok: false, why: "redirection vers page HTML" };
+          }
+          return { ok: true };
+        } catch (err) {
+          const status = statusOf(err);
+          if (status === 405 || status === 501) return { ok: null, why: "HEAD refus\xE9" };
+          return { ok: false, why: status ? "HTTP " + status : "injoignable" };
+        }
+      }
+      let res;
+      try {
+        res = yield fetchText(st.url, { method: "GET", headers, timeout: left() });
+      } catch (err) {
+        if (neutralErr(err)) return { ok: null, why: "sonde interrompue" };
+        const status = statusOf(err);
+        return { ok: false, why: status ? "HTTP " + status : "playlist injoignable" };
+      }
+      let text = res.text || "";
+      if (looksHtml(text)) return { ok: false, why: "redirection vers page HTML" };
+      let base = res.finalUrl || st.url;
+      const variant = nextHlsUri(text, "#EXT-X-STREAM-INF");
+      if (variant) {
+        const vUrl = resolveUrl(base, variant);
+        let v;
+        try {
+          v = yield fetchText(vUrl, { method: "GET", headers, timeout: left() });
+        } catch (err) {
+          if (neutralErr(err)) return { ok: null, why: "sonde interrompue" };
+          const status = statusOf(err);
+          if (status >= 400) return { ok: false, why: "HTTP " + status + " (variante)" };
+          return { ok: null, why: "variante non test\xE9e" };
+        }
+        text = v.text || "";
+        if (looksHtml(text)) return { ok: false, why: "variante \u2192 page HTML" };
+        base = v.finalUrl || vUrl;
+      }
+      const seg = nextHlsUri(text, "#EXTINF");
+      if (!seg || !deep) return { ok: true };
+      const segUrl = resolveUrl(base, seg);
+      try {
+        const sres = yield fetchStatus(segUrl, {
+          method: "GET",
+          headers: Object.assign({}, headers, { Range: SEGMENT_RANGE }),
+          timeout: left(),
+          noBody: true
+        });
+        if (sres.status >= 400) return { ok: false, why: "HTTP " + sres.status + " (segment)" };
+        if (/text\/html/i.test(sres.contentType || "")) return { ok: false, why: "segment \u2192 page HTML" };
+        return { ok: true };
+      } catch (err) {
+        if (neutralErr(err)) return { ok: null, why: "sonde interrompue" };
+        const status = statusOf(err);
+        if (!status && Date.now() >= deadline) return { ok: null, why: "segment non test\xE9" };
+        return { ok: false, why: status ? "HTTP " + status + " (segment)" : "segment injoignable" };
+      }
+    });
+  }
+  function verifyStreams(streams, opts) {
+    const list = (streams || []).slice(0, PROBE_MAX);
+    const budget = Math.min(PROBE_BUDGET_MS, (opts && opts.remainingMs) - MIN_REMAINING_MS);
+    if (!list.length || !(budget >= 2e3)) return Promise.resolve(streams);
+    const perProbe = Math.min(PROBE_MS, budget);
+    const deadline = Date.now() + budget;
+    let results;
+    if (typeof setTimeout === "function") {
+      results = Promise.all(list.map(function(st, i) {
+        return probeOne(st, perProbe, i < DEEP_MAX);
+      }));
+    } else {
+      results = list.reduce(function(chain, st, i) {
+        return chain.then(function(acc) {
+          if (Date.now() + MIN_REMAINING_MS > deadline) {
+            acc.push({ ok: null, why: "non test\xE9" });
+            return acc;
+          }
+          return probeOne(st, perProbe, i < DEEP_MAX).then(function(r) {
+            acc.push(r);
+            return acc;
+          });
+        });
+      }, Promise.resolve([]));
+    }
+    return results.then(function(res) {
+      const good = [];
+      const dead = [];
+      (streams || []).forEach(function(st, i) {
+        const r = i < res.length ? res[i] : { ok: null };
+        console.log(
+          "[verify] " + (r.ok === true ? "OK " : r.ok === false ? "KO " : "?  ") + st.name + " \xB7 " + (r.why || "") + " \xB7 " + st.url
+        );
+        if (r.ok === false) {
+          const copy = Object.assign({}, st);
+          if (!/ ⚠$/.test(String(copy.name || ""))) copy.name = String(copy.name || "Fluxio") + " \u26A0";
+          dead.push(copy);
+        } else {
+          good.push(st);
+        }
+      });
+      return good.concat(dead);
+    });
+  }
+  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE;
+  var init_verify = __esm({
+    "src/core/verify.js"() {
+      init_http();
+      PROBE_MS = 4e3;
+      PROBE_MAX = 6;
+      PROBE_BUDGET_MS = 8e3;
+      MIN_REMAINING_MS = 1500;
+      DEEP_MAX = 3;
+      SEGMENT_RANGE = "bytes=0-16383";
     }
   });
 
@@ -1981,7 +2181,10 @@ var __provider = (() => {
         url: finalUrl,
         referer,
         ua: BROWSER_UA,
-        subtitles: extractSubtitles(res.text, res.finalUrl)
+        subtitles: extractSubtitles(res.text, res.finalUrl),
+        // vidzy : segments refusés au player natif (TLS Chrome + gk=) même
+        // quand la playlist passe — stream.js rangera ce flux en dernier ⚠.
+        weakPlayer: variant === "vidzy"
       };
     });
   }
@@ -2229,7 +2432,8 @@ var __provider = (() => {
         url: out.url,
         referer: out.referer || "",
         ua: out.ua || BROWSER_UA,
-        subtitles: out.subtitles || []
+        subtitles: out.subtitles || [],
+        weakPlayer: out.weakPlayer === true
       };
     });
   }
@@ -2289,7 +2493,7 @@ var __provider = (() => {
       init_vidzyShared();
       init_subtitles();
       BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-      PROVIDER_ORDER2 = ["uqload", "premium", "netu", "luluvid", "filmoon", "voe", "vidzy"];
+      PROVIDER_ORDER2 = ["uqload", "netu", "filmoon", "voe", "luluvid", "premium", "vidzy"];
       FILE_RE = /file\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']/;
       MP4_RE = /(https:\/\/strm[^"'<>\s]+\/v\.mp4)/;
       INLINE_SRC_LOCAL = /src\s*:\s*\(function\(s\)\{([\s\S]{0,4000}?)\}\)\("([A-Za-z0-9+/=]+)"\)/;
@@ -2317,7 +2521,7 @@ var __provider = (() => {
     return LANG_LABELS[langKey] || String(langKey || "").toUpperCase();
   }
   function makeStream(parts) {
-    return {
+    const st = {
       title: String(parts.title || "").trim() || "Flux",
       url: String(parts.url || ""),
       quality: parts.quality || "Direct",
@@ -2327,16 +2531,14 @@ var __provider = (() => {
       _langKey: parts._langKey || "vo",
       _site: parts._site || ""
     };
+    if (parts._weakPlayer === true) st._weakPlayer = true;
+    return st;
   }
   function composeTitle({ site, episode, host, url, lang }) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
     const epLabel = episode > 0 ? " \xB7 E" + String(episode).padStart(2, "0") : "";
     return `${site}${epLabel} \xB7 ${host} \xB7 ${kind} \xB7 ${langLabel(lang)}`;
   }
-  var TEST_STREAMS = [
-    { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
-    { name: "Fluxio \xB7 TEST MP4 (google)", title: "Test MP4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", quality: "Direct", language: "TEST" }
-  ];
   function displayName(s) {
     if (s.name) return s.name;
     const parts = String(s.title || "").split(" \xB7 ");
@@ -2359,7 +2561,8 @@ var __provider = (() => {
     const relevant = (streams || []).filter((s) => s && s.url && allowed.indexOf(s._langKey) !== -1);
     const sorted = relevant.slice().sort((a, b) => idxOf(a._langKey) - idxOf(b._langKey));
     const seen = {};
-    const out = [];
+    const good = [];
+    const weak = [];
     for (const s of sorted) {
       if (seen[s.url]) continue;
       seen[s.url] = true;
@@ -2372,11 +2575,16 @@ var __provider = (() => {
       };
       if (s.headers && Object.keys(s.headers).length) clean.headers = s.headers;
       if (s.subtitles && s.subtitles.length) clean.subtitles = s.subtitles;
-      out.push(clean);
+      (s._weakPlayer === true ? weak : good).push(clean);
     }
-    return out;
+    return good.concat(
+      weak.map(function(w) {
+        if (!/ ⚠$/.test(w.name)) w.name += " \u26A0";
+        return w;
+      })
+    );
   }
-  var LANG_LABELS, PROVIDER_NAME;
+  var LANG_LABELS, PROVIDER_NAME, TEST_STREAMS;
   var init_stream = __esm({
     "src/core/stream.js"() {
       LANG_LABELS = {
@@ -2385,6 +2593,10 @@ var __provider = (() => {
         vo: "VO"
       };
       PROVIDER_NAME = "Fluxio";
+      TEST_STREAMS = [
+        { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
+        { name: "Fluxio \xB7 TEST MP4 (google)", title: "Test MP4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", quality: "Direct", language: "TEST" }
+      ];
     }
   });
 
@@ -2536,6 +2748,7 @@ var __provider = (() => {
                 title: sub.label || String(sub.lang || "").toUpperCase(),
                 lang: sub.lang || "fre"
               })),
+              _weakPlayer: r.weakPlayer === true,
               _langKey: lang,
               _site: siteId
             })
@@ -3381,6 +3594,7 @@ var __provider = (() => {
                   title: sub.label || String(sub.lang || "").toUpperCase(),
                   lang: sub.lang || "fre"
                 })),
+                _weakPlayer: r.weakPlayer === true,
                 _langKey: emb.lang,
                 _site: "webflix"
               })
@@ -3556,6 +3770,12 @@ var __provider = (() => {
       url,
       quality: kind === "HLS" ? "Auto (HLS)" : "Direct",
       language: langLabel2(langKey),
+      headers: {
+        "User-Agent": HEADERS2["User-Agent"],
+        Accept: "*/*",
+        "Accept-Language": HEADERS2["Accept-Language"],
+        Referer: SITE + "/"
+      },
       _langKey: langKey,
       _site: "webflix"
     });
@@ -3854,89 +4074,6 @@ var __provider = (() => {
     }
   });
 
-  // src/core/verify.js
-  const PROBE_MS = 4000;
-  const PROBE_MAX = 6;
-  const PROBE_BUDGET_MS = 8000;
-  const MIN_REMAINING_MS = 1500;
-
-  function probeOne(st, timeout) {
-      const isHls = /\.m3u8(\?|$)/i.test(String(st.url || ''));
-      const headers = Object.assign({ Accept: '*/*' }, st.headers || {});
-      return fetchText(st.url, {
-          method: isHls ? 'GET' : 'HEAD',
-          headers: headers,
-          timeout: timeout,
-      }).then(
-          function (res) {
-              if (isHls) {
-                  return /#EXTM3U/.test(res.text || '')
-                      ? { ok: true }
-                      : { ok: false, why: 'playlist HLS invalide' };
-              }
-              return { ok: true };
-          },
-          function (err) {
-              const status = err && err.status ? err.status : 0;
-              if (!isHls && (status === 405 || status === 501)) return { ok: null, why: 'HEAD refusé' };
-              return { ok: false, why: status ? 'HTTP ' + status : 'injoignable' };
-          }
-      );
-  }
-
-  /**
-   * @param {Array} streams flux Nuvio finaux (name, url, headers…)
-   * @param {{remainingMs: number}} opts
-   * @returns {Promise<Array>} mêmes flux : vivants/inconnus d'abord, morts en fin avec ⚠
-   */
-  function verifyStreams(streams, opts) {
-      const list = (streams || []).slice(0, PROBE_MAX);
-      const budget = Math.min(PROBE_BUDGET_MS, (opts && opts.remainingMs) - MIN_REMAINING_MS);
-      if (!list.length || !(budget >= 2000)) return Promise.resolve(streams);
-
-      const perProbe = Math.min(PROBE_MS, budget);
-      const deadline = Date.now() + budget;
-      let results;
-
-      if (typeof setTimeout === 'function') {
-          results = Promise.all(list.map(function (st) { return probeOne(st, perProbe); }));
-      } else {
-          // fetch bloquant : une sonde après l'autre, jamais au-delà de l'échéance
-          results = list.reduce(function (chain, st) {
-              return chain.then(function (acc) {
-                  if (Date.now() + MIN_REMAINING_MS > deadline) {
-                      acc.push({ ok: null, why: 'non testé' });
-                      return acc;
-                  }
-                  return probeOne(st, perProbe).then(function (r) {
-                      acc.push(r);
-                      return acc;
-                  });
-              });
-          }, Promise.resolve([]));
-      }
-
-      return results.then(function (res) {
-          const good = [];
-          const dead = [];
-          (streams || []).forEach(function (st, i) {
-              const r = i < res.length ? res[i] : { ok: null };
-              console.log(
-                  '[verify] ' + (r.ok === true ? 'OK ' : r.ok === false ? 'KO ' : '?  ') +
-                      st.name + ' · ' + (r.why || '') + ' · ' + st.url
-              );
-              if (r.ok === false) {
-                  const copy = Object.assign({}, st);
-                  copy.name = String(st.name || 'Fluxio') + ' ⚠';
-                  dead.push(copy);
-              } else {
-                  good.push(st);
-              }
-          });
-          return good.concat(dead);
-      });
-  }
-
   // src/core/orchestrator.js
   function extractStreams(_0, _1, _2, _3) {
     return __async(this, arguments, function* (tmdbId, mediaType, season2, episode, options = {}) {
@@ -4052,7 +4189,9 @@ var __provider = (() => {
         );
       }
       for (const st of streams) {
-        console.log("[stream] " + st.name + " | " + st.quality + " | " + st.language + " | " + st.url + " | headers=" + JSON.stringify(st.headers || {}));
+        console.log(
+          "[stream] " + st.name + " | " + st.quality + " | " + st.language + " | " + st.url + " | headers=" + JSON.stringify(st.headers || {})
+        );
       }
       console.log(
         "[core] Termin\xE9 : " + streams.length + " stream(s) en " + (Date.now() - started) + "ms" + (outcome === "enough" ? " (anti-blocage : \xE9ch\xE9ance douce)" : "")
@@ -4197,6 +4336,8 @@ var __provider = (() => {
   var init_orchestrator = __esm({
     "src/core/orchestrator.js"() {
       init_settings();
+      init_http();
+      init_verify();
       init_tmdb();
       init_match();
       init_registry();
@@ -4379,14 +4520,14 @@ var __provider = (() => {
             type: "toggle",
             key: "verifyLinks",
             label: "Tester les liens avant affichage",
-            description: "Teste rapidement chaque lien (8 s max) : les liens morts passent en fin de liste avec \u26A0 au lieu de bloquer en \xAB buffering \xBB.",
+            description: "Teste chaque lien (8 s max) : playlist HLS, puis variante et premier segment sur les 3 premiers liens \u2014 les liens morts ou refus\xE9s aux segments (403) passent en fin de liste avec \u26A0 au lieu de bloquer en \xAB buffering \xBB.",
             defaultValue: true
           },
           {
             type: "toggle",
             key: "selfTest",
             label: "Mode diagnostic (flux de test + domaine des liens)",
-            description: "Ajoute 2 flux publics de test en t\xEAte de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le probl\xE8me vient du lecteur de l\u2019app, pas du plugin.",
+            description: "Ajoute 2 flux publics de test en t\xEAte de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le probl\xE8me vient du lecteur de l\u2019app, pas du plugin. Activ\xE9 par d\xE9faut : Nuvio n\u2019expose pas d\u2019UI de r\xE9glages, il reste actif tant que le d\xE9bogage n\u2019est pas termin\xE9.",
             defaultValue: true
           },
           {

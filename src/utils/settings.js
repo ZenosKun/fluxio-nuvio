@@ -75,6 +75,13 @@ export function readConfig() {
     // budget complet).
     const earlyExit = boolOr(s.earlyExit, true);
     const verifyLinks = boolOr(s.verifyLinks, true);
+    // Mode diagnostic = FORCÉ ACTIF (v3.1.7) tant que le débogage n'est pas
+    // terminé : l'app Nuvio n'expose AUCUNE UI de réglages pour ce plugin
+    // (rien dans Contenu et découverte / Plugins), SCRAPER_SETTINGS n'arrive
+    // jamais — un défaut « opt-in » serait donc définitivement inaccessible.
+    // Ce mode ajoute 2 flux TEST publics en tête (s'ils ne se lisent pas non
+    // plus, le problème vient du lecteur de l'app) et affiche le domaine de
+    // chaque lien dans son nom. À repasser en opt-in quand tout est réglé.
     const selfTest = boolOr(s.selfTest, true);
 
     // Échéance douce (tunable avancé, SCRAPER_SETTINGS uniquement) : Nuvio

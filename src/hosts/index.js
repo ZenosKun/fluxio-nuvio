@@ -7,15 +7,19 @@
  * avec les en-têtes de lecture (Referer/User-Agent) que Nuvio appliquera au
  * player : aucun proxy intermédiaire.
  *
- * Ordre de préférence :
- *   uqload → premium → netu → luluvid → filmoon → voe → vidzy
+ * Ordre de préférence (v3.1.7 — famille vidzy rétrogradée) :
+ *   uqload → netu → filmoon → voe → luluvid → premium → vidzy
  *
- * Écart délibéré avec sestudio (qui met vidzy juste après uqload) : le CDN
- * vidzy exige une empreinte TLS Chrome (IMPERSONATE_PROVIDERS = {"vidzy"}) et
- * refuse en 403 les clients non-Chrome — le player/fetch natif de Nuvio ne
- * l'imitera pas. Placé en dernier pour ne pas occuper un slot de résultats
- * avec un lien probablement mort ; premium (fsvid.lol, même famille) n'a pas
- * cette contrainte TLS.
+ * Écart délibéré avec sestudio (qui met vidzy juste après uqload) : la famille
+ * vidzy (vidzy.org, fsvid.lol) exige une empreinte TLS Chrome (IMPERSONATE_PROVIDERS
+ * = {"vidzy"}) et une gate key gk= sur CHAQUE requête — le player natif de Nuvio
+ * (ExoPlayer / Media Foundation) ne l'imitera pas et prend 403 sur les
+ * variantes/segments, même quand notre probe Node voit #EXTM3U (diagnostic
+ * buffering infini). premium et luluvid, même famille de CDN, sont rétrogradés
+ * aussi : résolus seulement si pas mieux, et marqués par la sonde segment
+ * (verify.js) quand leurs segments refusent le lecteur natif.
+ * vidzy est en outre marqué weakPlayer : stream.js le range en dernier avec
+ * un ⚠ même si la sonde passe (playlist servie, segments interdits).
  */
 
 import { fetchText, fetchJson, fetchJsonSafe, resolveUrl } from '../utils/http.js';
@@ -28,7 +32,7 @@ import { extractSubtitles } from './subtitles.js';
 const BROWSER_UA =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-export const PROVIDER_ORDER = ['uqload', 'premium', 'netu', 'luluvid', 'filmoon', 'voe', 'vidzy'];
+export const PROVIDER_ORDER = ['uqload', 'netu', 'filmoon', 'voe', 'luluvid', 'premium', 'vidzy'];
 
 /** Format jouable : m3u8 → HLS, sinon MP4. */
 export function kindOf(url) {
@@ -117,6 +121,9 @@ async function resolveVidzyFamily(embedUrl, opts, variant) {
         referer: referer,
         ua: BROWSER_UA,
         subtitles: extractSubtitles(res.text, res.finalUrl),
+        // vidzy : segments refusés au player natif (TLS Chrome + gk=) même
+        // quand la playlist passe — stream.js rangera ce flux en dernier ⚠.
+        weakPlayer: variant === 'vidzy',
     };
 }
 
@@ -391,7 +398,7 @@ export function providerFromEmbedUrl(src) {
 
 /**
  * Résout un embed avec l'extracteur demandé (ou deviné).
- * @returns {Promise<{provider: string, url: string, referer: string, ua: string, subtitles: Array}>}
+ * @returns {Promise<{provider: string, url: string, referer: string, ua: string, subtitles: Array, weakPlayer: boolean}>}
  */
 export async function resolveEmbed(provider, embedUrl, opts = {}) {
     const name = provider || providerFromEmbedUrl(embedUrl);
@@ -406,6 +413,7 @@ export async function resolveEmbed(provider, embedUrl, opts = {}) {
         referer: out.referer || '',
         ua: out.ua || BROWSER_UA,
         subtitles: out.subtitles || [],
+        weakPlayer: out.weakPlayer === true,
     };
 }
 

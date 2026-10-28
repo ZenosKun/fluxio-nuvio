@@ -108,8 +108,13 @@ async function raceFetch(url, fetchOptions, timeout, action) {
 }
 
 async function raceFetchInner(url, fetchOptions, timeout, action) {
-    const controller = makeController(fetchOptions.signal);
-    const opts = { ...fetchOptions, signal: controller ? controller.signal : undefined };
+    // _noBody : ne PAS lire le corps (sonde de segment : un .ts binaire peut
+    // être lourd ; seuls statut et content-type nous intéressent).
+    const noBody = fetchOptions._noBody === true;
+    const rest = { ...fetchOptions };
+    delete rest._noBody;
+    const controller = makeController(rest.signal);
+    const opts = { ...rest, signal: controller ? controller.signal : undefined };
 
     const work = (async () => {
         const res = await fetch(url, opts);
@@ -117,10 +122,22 @@ async function raceFetchInner(url, fetchOptions, timeout, action) {
             throw new HttpError('réponse invalide du runtime fetch', 0, url);
         }
         let text = '';
+        if (!noBody) {
+            try {
+                text = await res.text();
+            } catch (e) {
+                text = '';
+            }
+        }
+        let contentType = '';
         try {
-            text = await res.text();
+            const h = res.headers;
+            if (h) {
+                if (typeof h.get === 'function') contentType = String(h.get('content-type') || '');
+                else if (h['content-type']) contentType = String(h['content-type']);
+            }
         } catch (e) {
-            text = '';
+            /* certains runtimes n'exposent pas res.headers */
         }
         let finalUrl = url;
         try {
@@ -128,7 +145,7 @@ async function raceFetchInner(url, fetchOptions, timeout, action) {
         } catch (e) {
             /* certains runtimes exposent res.url en getter coûteux */
         }
-        return { res: res, text: text, finalUrl: finalUrl };
+        return { res: res, text: text, finalUrl: finalUrl, contentType: contentType };
     })();
 
     if (typeof setTimeout !== 'function') {
@@ -191,7 +208,44 @@ export async function fetchText(url, options = {}) {
         const detail = out.text ? out.text.slice(0, 200) : '';
         throw new HttpError('HTTP ' + out.res.status + (detail ? ' — ' + detail : ''), out.res.status, url);
     }
-    return { text: out.text, status: out.res.status, finalUrl: out.finalUrl };
+    return {
+        text: out.text,
+        status: out.res.status,
+        finalUrl: out.finalUrl,
+        contentType: out.contentType || '',
+    };
+}
+
+/**
+ * Statut sans corps : { status, contentType, finalUrl } — pour la sonde de
+ * segment (GET Range borné, corps binaire JAMAIS lu). Jette HttpError sur
+ * erreur réseau ; le statut HTTP est renvoyé tel quel (pas d'exception 4xx/5xx).
+ */
+export async function fetchStatus(url, options = {}) {
+    const timeout = options.timeout || 20000;
+    let out;
+    try {
+        out = await raceFetch(
+            url,
+            {
+                method: options.method || 'GET',
+                headers: { ...DEFAULT_HEADERS, ...(options.headers || {}) },
+                body: options.body !== undefined ? options.body : undefined,
+                timeout: timeout,
+                _noBody: options.noBody === true,
+            },
+            timeout,
+            won => won
+        );
+    } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError('réseau injoignable: ' + (err && err.message ? err.message : String(err)), 0, url);
+    }
+    return {
+        status: out.res.status,
+        contentType: out.contentType || '',
+        finalUrl: out.finalUrl,
+    };
 }
 
 /**

@@ -259,6 +259,7 @@ async function resolveEmbedPage(ctx, emb, push) {
                             title: sub.label || String(sub.lang || '').toUpperCase(),
                             lang: sub.lang || 'fre',
                         })),
+                        _weakPlayer: r.weakPlayer === true,
                         _langKey: emb.lang,
                         _site: 'webflix',
                     })
@@ -455,7 +456,12 @@ function buildHeaders(referer, ua) {
     return headers;
 }
 
-/** Flux direct FastFlux/Discovery/Zenix (mp4 ou HLS servi pré-tokenisé). */
+/** Flux direct FastFlux/Discovery/Zenix (mp4 ou HLS servi pré-tokenisé).
+ *
+ * Headers de lecture OBLIGATOIRES (v3.1.7, diagnostic buffering infini) : le
+ * proxy FastFlux (falzey.lol/api/video_proxy.php) renvoie une 302 vers
+ * Telegram/HTML sans Referer webflix.art — avec, il sert le vrai MP4 signé
+ * (?ff=…). Le lecteur natif Nuvio applique ces en-têtes tels quels. */
 function directStream(ctx, url, source, langKey, episode) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || '')) ? 'HLS' : 'MP4';
     return makeStream({
@@ -469,6 +475,12 @@ function directStream(ctx, url, source, langKey, episode) {
         url: url,
         quality: kind === 'HLS' ? 'Auto (HLS)' : 'Direct',
         language: langLabel(langKey),
+        headers: {
+            'User-Agent': HEADERS['User-Agent'],
+            Accept: '*/*',
+            'Accept-Language': HEADERS['Accept-Language'],
+            Referer: SITE + '/',
+        },
         _langKey: langKey,
         _site: 'webflix',
     });

@@ -212,6 +212,7 @@ async function resolveCard(ctx, siteId, card, isMovie) {
                         title: sub.label || String(sub.lang || '').toUpperCase(),
                         lang: sub.lang || 'fre',
                     })),
+                    _weakPlayer: r.weakPlayer === true,
                     _langKey: lang,
                     _site: siteId,
                 })

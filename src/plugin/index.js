@@ -73,7 +73,7 @@ module.exports = {
             key: 'verifyLinks',
             label: 'Tester les liens avant affichage',
             description:
-                'Teste rapidement chaque lien (8 s max) : les liens morts passent en fin de liste avec ⚠ au lieu de bloquer en « buffering ».',
+                'Teste chaque lien (8 s max) : playlist HLS, puis variante et premier segment sur les 3 premiers liens — les liens morts ou refusés aux segments (403) passent en fin de liste avec ⚠ au lieu de bloquer en « buffering ».',
             defaultValue: true,
         },
         {
@@ -81,7 +81,7 @@ module.exports = {
             key: 'selfTest',
             label: 'Mode diagnostic (flux de test + domaine des liens)',
             description:
-                'Ajoute 2 flux publics de test en tête de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le problème vient du lecteur de l’app, pas du plugin.',
+                'Ajoute 2 flux publics de test en tête de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le problème vient du lecteur de l’app, pas du plugin. Activé par défaut : Nuvio n’expose pas d’UI de réglages, il reste actif tant que le débogage n’est pas terminé.',
             defaultValue: true,
         },
         {

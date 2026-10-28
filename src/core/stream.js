@@ -23,10 +23,12 @@ export function langLabel(langKey) {
 
 /**
  * Fabrique un flux interne annoté. Les champs _* pilotent le tri et le
- * dédoublonnage ; ils sont retirés à la normalisation finale.
+ * dédoublonnage ; ils sont retirés à la normalisation finale. _weakPlayer
+ * (vidzy : TLS Chrome + gk= inaccessibles au lecteur natif) est rangé en
+ * dernier avec un ⚠ même si le lien répond correctement à la sonde.
  */
 export function makeStream(parts) {
-    return {
+    const st = {
         title: String(parts.title || '').trim() || 'Flux',
         url: String(parts.url || ''),
         quality: parts.quality || 'Direct',
@@ -36,6 +38,8 @@ export function makeStream(parts) {
         _langKey: parts._langKey || 'vo',
         _site: parts._site || '',
     };
+    if (parts._weakPlayer === true) st._weakPlayer = true;
+    return st;
 }
 
 /** Titre composé « Site [E12] · Hôte · Type · Langue » (style sestudio). */
@@ -66,7 +70,9 @@ function displayName(s) {
     return PROVIDER_NAME + (s._site ? ' · ' + s._site : '') + (host ? ' · ' + host : '') + (ep ? ' · ' + ep : '');
 }
 
-/** Tri par langue préférée puis dédoublonnage par URL, format Nuvio final. */
+/** Tri par langue préférée puis dédoublonnage par URL, format Nuvio final.
+ * Les flux _weakPlayer (vidzy : segments refusés au lecteur natif) passent en
+ * dernier avec un ⚠ — ils restent affichés mais ne bloquent plus la liste. */
 export function finalizeStreams(streams, cfg) {
     const order = cfg.fallbackLangs;
     const allowed = cfg.allowOtherLang ? order : order.slice(0, 1);
@@ -78,7 +84,8 @@ export function finalizeStreams(streams, cfg) {
     const sorted = relevant.slice().sort((a, b) => idxOf(a._langKey) - idxOf(b._langKey));
 
     const seen = {};
-    const out = [];
+    const good = [];
+    const weak = [];
     for (const s of sorted) {
         if (seen[s.url]) continue;
         seen[s.url] = true;
@@ -91,7 +98,12 @@ export function finalizeStreams(streams, cfg) {
         };
         if (s.headers && Object.keys(s.headers).length) clean.headers = s.headers;
         if (s.subtitles && s.subtitles.length) clean.subtitles = s.subtitles;
-        out.push(clean);
+        (s._weakPlayer === true ? weak : good).push(clean);
     }
-    return out;
+    return good.concat(
+        weak.map(function (w) {
+            if (!/ ⚠$/.test(w.name)) w.name += ' ⚠';
+            return w;
+        })
+    );
 }

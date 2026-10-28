@@ -23,6 +23,16 @@ const BUNDLE = path.join(__dirname, '..', 'providers', 'fluxio.js');
 const ONLY = (process.argv[2] || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 const want = id => !ONLY.length || ONLY.indexOf(id) !== -1;
 
+/* Le mode diagnostic (selfTest) est actif par défaut tant que Nuvio n'expose
+   pas d'UI de réglages : il ajoute 2 flux TEST en tête de liste. Les scénarios
+   e2e valident le contenu réel du pipeline — on le neutralise ici (défaut de
+   base), les scénarios qui surchargent des réglages repartent de cette base. */
+const BASE_SETTINGS = { selfTest: 'false' };
+function setSettings(extra) {
+    globalThis.SCRAPER_SETTINGS = Object.assign({}, BASE_SETTINGS, extra || {});
+}
+setSettings();
+
 let ok = 0;
 let ko = 0;
 const timings = {};
@@ -174,7 +184,7 @@ function hasStream(streams, pred) {
     if (want('F'))
     /* ── F. earlyExit OFF — comportement v2 (tout attendre) ─────────────── */
     {
-        globalThis.SCRAPER_SETTINGS = { earlyExit: 'false' };
+        setSettings({ earlyExit: 'false' });
         const t0 = Date.now();
         await scenario('F. Fight Club — earlyExit OFF (tout attendre)', async () => {
             const streams = await provider.getStreams(550, 'movie', 0, 0);
@@ -183,13 +193,13 @@ function hasStream(streams, pred) {
             assertNoLog(globalThis.__lastLogs, 'résultats suffisants');
             return { streams, ms: lastMs(t0) };
         }).then(r => { timings.fightClubFull = r.ms; });
-        delete globalThis.SCRAPER_SETTINGS;
+        setSettings();
     }
 
     if (want('G'))
     /* ── G. detectAnime OFF — aucun routage ─────────────────────────────── */
     {
-        globalThis.SCRAPER_SETTINGS = { detectAnime: 'false' };
+        setSettings({ detectAnime: 'false' });
         const t0 = Date.now();
         await scenario('G. Fight Club — detectAnime OFF (comportement v2)', async () => {
             const streams = await provider.getStreams(550, 'movie', 0, 0);
@@ -203,7 +213,7 @@ function hasStream(streams, pred) {
             assert(streams.length >= 1, 'aucun flux');
             return { streams, ms: lastMs(t0) };
         }).then(r => { timings.detectOff = r.ms; });
-        delete globalThis.SCRAPER_SETTINGS;
+        setSettings();
     }
 
     if (want('H'))

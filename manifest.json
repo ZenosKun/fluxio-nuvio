@@ -1,12 +1,12 @@
 {
  "name": "fluxio-nuvio",
- "version": "3.1.6",
+ "version": "3.1.7",
  "scrapers": [
   {
    "id": "fluxio",
    "name": "Fluxio",
-   "description": "Films, séries et animés VF/VOSTFR en direct — 5 sources FR orchestrées (FStream, French-Manga, BFlix, Papadustream, Webflix) : toutes les qualités des sources réactives affichées, sites bloqués coupés après 5 s (anti-blocage), budget global 25 s garanti sous le timeout de l'app (v3.1.2 anti « impossible de charger les streams »), routage anime/film/série via TMDB, recherche ancrée TMDB (zéro mauvais match), hosts uqload/vidzy/premium/netu/luluvid/filmoon/voe résolus en JS. Aucun serveur requis ; un serveur sestudio reste optionnel en repli.",
-   "version": "3.1.6",
+   "description": "Films, séries et animés VF/VOSTFR en direct — 5 sources FR orchestrées (FStream, French-Manga, BFlix, Papadustream, Webflix) : toutes les qualités des sources réactives affichées, sites bloqués coupés après 5 s (anti-blocage), budget global 25 s garanti sous le timeout de l'app (v3.1.2 anti « impossible de charger les streams »), v3.1.7 anti buffering infini : headers de lecture (Referer/UA) sur les flux directs webflix, sonde par segment (les liens refusés au lecteur passent en fin de liste ⚠), famille vidzy (TLS Chrome) dépriorisée, routage anime/film/série via TMDB, recherche ancrée TMDB (zéro mauvais match), hosts uqload/vidzy/premium/netu/luluvid/filmoon/voe résolus en JS. Aucun serveur requis ; un serveur sestudio reste optionnel en repli.",
+   "version": "3.1.7",
    "author": "ZenosKun",
    "supportedTypes": [
     "movie",
