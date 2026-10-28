@@ -110,9 +110,14 @@ async function raceFetch(url, fetchOptions, timeout, action) {
 async function raceFetchInner(url, fetchOptions, timeout, action) {
     // _noBody : ne PAS lire le corps (sonde de segment : un .ts binaire peut
     // être lourd ; seuls statut et content-type nous intéressent).
+    // _binary : lire le corps en OCTETS (res.arrayBuffer) et non en texte —
+    // le décodage UTF-8 corromprait un MP4 (octets invalides → U+FFFD) et
+    // rendrait le parsing moov/tkhd impossible (v3.1.10).
     const noBody = fetchOptions._noBody === true;
+    const binary = fetchOptions._binary === true;
     const rest = { ...fetchOptions };
     delete rest._noBody;
+    delete rest._binary;
     const controller = makeController(rest.signal);
     const opts = { ...rest, signal: controller ? controller.signal : undefined };
 
@@ -122,11 +127,24 @@ async function raceFetchInner(url, fetchOptions, timeout, action) {
             throw new HttpError('réponse invalide du runtime fetch', 0, url);
         }
         let text = '';
+        let bytes = null;
         if (!noBody) {
             try {
-                text = await res.text();
+                if (binary && res && typeof res.arrayBuffer === 'function') {
+                    bytes = new Uint8Array(await res.arrayBuffer());
+                } else {
+                    text = await res.text();
+                    if (binary) {
+                        // Runtime sans arrayBuffer : encodage charCodeAt & 0xFF
+                        // (perte des octets > 0xFF — acceptable en repli, le
+                        // parsing moov échouera proprement sur un corps mangled).
+                        bytes = new Uint8Array(text.length);
+                        for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
+                    }
+                }
             } catch (e) {
                 text = '';
+                bytes = null;
             }
         }
         let contentType = '';
@@ -145,7 +163,7 @@ async function raceFetchInner(url, fetchOptions, timeout, action) {
         } catch (e) {
             /* certains runtimes exposent res.url en getter coûteux */
         }
-        return { res: res, text: text, finalUrl: finalUrl, contentType: contentType };
+        return { res: res, text: text, bytes: bytes, finalUrl: finalUrl, contentType: contentType };
     })();
 
     if (typeof setTimeout !== 'function') {
@@ -210,6 +228,48 @@ export async function fetchText(url, options = {}) {
     }
     return {
         text: out.text,
+        status: out.res.status,
+        finalUrl: out.finalUrl,
+        contentType: out.contentType || '',
+    };
+}
+
+/**
+ * fetch BINAIRE avec timeout réel. Renvoie { bytes: Uint8Array, status,
+ * finalUrl, contentType, text }. Pour lire l'en-tête d'un MP4 (moov/tkhd →
+ * dimensions réelles) sans que le décodage UTF-8 ne corrompe les octets :
+ * res.arrayBuffer quand le runtime l'expose, sinon encodage charCodeAt.
+ * Un Range: bytes=0-131071 dans options.headers borne le téléchargement.
+ * @returns {Promise<{bytes: Uint8Array, text: string, status: number, finalUrl: string, contentType: string}>}
+ */
+export async function fetchBytes(url, options = {}) {
+    const timeout = options.timeout || 20000;
+    let out;
+    try {
+        out = await raceFetch(
+            url,
+            {
+                method: options.method || 'GET',
+                headers: { ...DEFAULT_HEADERS, ...(options.headers || {}) },
+                body: options.body !== undefined ? options.body : undefined,
+                timeout: timeout,
+                _binary: true,
+            },
+            timeout,
+            won => won
+        );
+    } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError('réseau injoignable: ' + (err && err.message ? err.message : String(err)), 0, url);
+    }
+
+    if (out.res.status < 200 || out.res.status >= 300) {
+        const detail = out.text ? out.text.slice(0, 200) : '';
+        throw new HttpError('HTTP ' + out.res.status + (detail ? ' — ' + detail : ''), out.res.status, url);
+    }
+    return {
+        bytes: out.bytes || new Uint8Array(0),
+        text: out.text || '',
         status: out.res.status,
         finalUrl: out.finalUrl,
         contentType: out.contentType || '',

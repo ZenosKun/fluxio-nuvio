@@ -418,5 +418,59 @@ t('TEST_STREAMS : 2 flux publics, MP4 sur test-videos.co.uk (l URL google répon
     assert.strictEqual(TEST_STREAMS[1].quality, 'Direct');
 });
 
+/* ── v3.1.10 : qualité réelle MP4 via moov/tkhd ─────────────────────────── */
+import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, looksMp4 } from '../src/utils/mp4.js';
+import { buildMp4 } from './helpers_mp4.mjs';
+
+t('mp4MaxHeight : tkhd v0 → 1080 (MP4 synthétique faststart)', () => {
+    const u8 = buildMp4(1080, { version: 0 });
+    assert.strictEqual(looksMp4(u8), true);
+    assert.strictEqual(mp4MaxHeight(u8), 1080);
+    assert.strictEqual(mp4QualityLabel(mp4MaxHeight(u8)), '1080p');
+});
+t('mp4MaxHeight : tkhd v1 → 2160 → 4K', () => {
+    assert.strictEqual(mp4QualityLabel(mp4MaxHeight(buildMp4(2160, { version: 1 }))), '4K');
+});
+t('mp4MaxHeight : buffer HTML → 0, bytesLookHtml → true', () => {
+    const html = new Uint8Array(Array.from('<!DOCTYPE html><html></html>').map(c => c.charCodeAt(0)));
+    assert.strictEqual(bytesLookHtml(html), true);
+    assert.strictEqual(mp4MaxHeight(html), 0);
+});
+t('mp4MaxHeight : buffer court / vide → 0', () => {
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(0)), 0);
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(10).fill(0x41)), 0);
+});
+t('mp4QualityLabel : bornes 2000 → 4K, 96 plafonné 8192', () => {
+    assert.strictEqual(mp4QualityLabel(2000), '4K');
+    assert.strictEqual(mp4QualityLabel(480), '480p');
+    assert.strictEqual(mp4QualityLabel(0), '');
+});
+
+/* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */
+import { bflixLangKey } from '../src/sources/bflix.js';
+t('bflixLangKey : Lupin (original fr, subs fr, audio non décrit) → VF (bug utilisateur)', () => {
+    assert.strictEqual(bflixLangKey([], true, 'fr'), 'vf');
+});
+t('bflixLangKey : série EN + subs fr (audio muxé EN) → VOSTFR', () => {
+    assert.strictEqual(bflixLangKey([], true, 'en'), 'vostfr');
+});
+t('bflixLangKey : série EN sans subs fr → VO', () => {
+    assert.strictEqual(bflixLangKey([], false, 'en'), 'vo');
+});
+t('bflixLangKey : piste audio unique FR annoncée → VF (même original en)', () => {
+    assert.strictEqual(bflixLangKey(['fr'], true, 'en'), 'vf');
+    assert.strictEqual(bflixLangKey(['fr-FR'], false, 'en'), 'vf');
+});
+t('bflixLangKey : pistes multiples (en+fr) → défaut inconnu → repli sous-titres', () => {
+    assert.strictEqual(bflixLangKey(['en', 'fr'], true, 'en'), 'vostfr');
+});
+t('bflixLangKey : playlist annonce en seul, original fr → la playlist gagne → VOSTFR', () => {
+    assert.strictEqual(bflixLangKey(['en'], true, 'fr'), 'vostfr');
+});
+t('bflixLangKey : NAME français sans LANGUAGE reconnu via le parseur HLS (info [])', () => {
+    // le repli NAME= est côté hlsAudioLangs (réseau) ; ici on vérifie [] only
+    assert.strictEqual(bflixLangKey([], false, ''), 'vo');
+});
+
 console.log(`\nRésultat : ${ok} OK, ${ko} échec(s)`);
 process.exit(ko ? 1 : 0);

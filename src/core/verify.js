@@ -33,8 +33,9 @@
  *   lien « OK » peut encore échouer côté lecteur, mais un lien « KO » est mort.
  */
 
-import { fetchText, fetchStatus, resolveUrl } from '../utils/http.js';
+import { fetchText, fetchBytes, fetchStatus, resolveUrl } from '../utils/http.js';
 import { qualityFromUrl, resolutionLabel } from './stream.js';
+import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml } from '../utils/mp4.js';
 
 const PROBE_MS = 4000;
 const PROBE_MAX = 10;
@@ -42,6 +43,35 @@ const PROBE_BUDGET_MS = 8000;
 const MIN_REMAINING_MS = 1500;
 const DEEP_MAX = 8; // sonde approfondie (segment) : 8 premiers liens
 const SEGMENT_RANGE = 'bytes=0-16383';
+/** Plage lue pour l'en-tête MP4 (moov/tkhd) : 128 Ko couvrent le moov des
+ * fichiers faststart (ftyp + moov avant mdat). Au-delà (moov en fin de
+ * fichier) : inatteignable avec un Range tête seule → pas de libellé, aucun
+ * coût supplémentaire. */
+const MOOV_RANGE = 'bytes=0-131071';
+const MOOV_MS = 2500;
+
+/**
+ * Qualité réelle d'un MP4 direct : si l'URL ne porte aucun motif de
+ * résolution (fastflux webflix : Lupin-S01-E01.mp4, l'API répond elle-même
+ * quality=Unknown), on lit la hauteur annoncée par le moov/tkhd du
+ * conteneur (GET Range 128 Ko, octets bruts — jamais le décodage UTF-8 qui
+ * corromprait le binaire). Échec silencieux → '' (on n'invente rien).
+ */
+async function mp4HeadQuality(st, headers, left) {
+    try {
+        const res = await fetchBytes(st.url, {
+            method: 'GET',
+            headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: '*/*' }),
+            timeout: Math.min(MOOV_MS, left()),
+        });
+        const u8 = res.bytes;
+        if (!u8 || !u8.length || bytesLookHtml(u8)) return '';
+        const h = mp4MaxHeight(u8);
+        return h ? mp4QualityLabel(h) : '';
+    } catch (e) {
+        return ''; // goûtage impossible : qualité inconnue, le lien reste « ? »/OK
+    }
+}
 
 /** Meilleure résolution annoncée par une playlist maître HLS → « 1080p », « 4K »…
  *  Une playlist média (sans #EXT-X-STREAM-INF) ne annonce pas de RESOLUTION
@@ -103,33 +133,36 @@ export async function probeOne(st, timeout, deep) {
                 // content-type mensonger text/html (vérifié live : fastflux
                 // webflix → cdn80.zen-blk.store répond 200 + text/html et
                 // délivre 1,4 Go de MP4). Avant de tuer le lien, on goûte les
-                // premiers octets (GET Range 16 Ko, timeout court) :
-                //   HTML réel → mort ; binaire non-HTML (signature ftyp ou
-                //   autre) → vivant ; goûtage impossible → « ? » (on ne tue
-                //   pas un lien pour notre faute).
+                // premiers octets (GET Range 128 Ko, timeout court) :
+                //   HTML réel → mort ; binaire non-HTML → vivant ;
+                //   goûtage impossible → « ? » (on ne tue pas un lien pour
+                //   notre faute).
+                // ⚠ v3.1.10 : le goûtage lit des OCTETS (fetchBytes, jamais le
+                // décodage UTF-8 qui corromprait le binaire) et parse le
+                // moov/tkhd du même buffer → qualité réelle (« 1080p », « 4K »)
+                // même quand l'URL ne porte aucun motif de résolution.
                 try {
-                    const sniff = await fetchText(st.url, {
+                    const sniff = await fetchBytes(st.url, {
                         method: 'GET',
-                        headers: Object.assign({}, headers, { Range: SEGMENT_RANGE }),
-                        timeout: Math.min(1500, left()),
+                        headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: '*/*' }),
+                        timeout: Math.min(MOOV_MS, left()),
                     });
-                    const body = String(sniff.text || '');
-                    if (looksHtml(body)) return { ok: false, why: 'corps HTML (content-type mensonger)' };
-                    if (!body) return { ok: null, why: 'corps vide (content-type mensonger)' };
-                    // Signature MP4 : boîte ftyp en offset 4 (taille 4 o puis
-                    // 'ftyp'). Tout autre binaire non-HTML est accepté aussi.
-                    const isFtyp = body.length > 8 && body.slice(4, 8) === 'ftyp';
-                    if (!isFtyp && body.charAt(0) === '<') {
-                        return { ok: false, why: 'corps HTML (content-type mensonger)' };
-                    }
-                    const q = qualityFromUrl(res.finalUrl || st.url);
+                    const u8 = sniff.bytes;
+                    if (!u8 || !u8.length) return { ok: null, why: 'corps vide (content-type mensonger)' };
+                    if (bytesLookHtml(u8)) return { ok: false, why: 'corps HTML (content-type mensonger)' };
+                    // Binaire non-HTML accepté (signature ftyp probable mais
+                    // non exigée : certains conteneurs démarrent autrement).
+                    let q = qualityFromUrl(res.finalUrl || st.url);
+                    if (!q) q = mp4QualityLabel(mp4MaxHeight(u8));
                     return { ok: true, quality: q, why: 'content-type mensonger, média confirmé' };
                 } catch (err2) {
                     if (neutralErr(err2)) return { ok: null, why: 'sonde interrompue' };
                     return { ok: null, why: 'goûtage impossible (content-type mensonger)' };
                 }
             }
-            const q = qualityFromUrl(res.finalUrl || st.url);
+            // v3.1.10 : qualité réelle du MP4 quand l'URL n'en dit rien.
+            let q = qualityFromUrl(res.finalUrl || st.url);
+            if (!q) q = await mp4HeadQuality(st, headers, left);
             return { ok: true, quality: q };
         } catch (err) {
             const status = statusOf(err);

@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.9 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T14:24:22.411Z
+ * Fluxio v3.1.10 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T15:13:35.132Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -172,8 +172,10 @@ var __provider = (() => {
   function raceFetchInner(url, fetchOptions, timeout, action) {
     return __async(this, null, function* () {
       const noBody = fetchOptions._noBody === true;
+      const binary = fetchOptions._binary === true;
       const rest = __spreadValues({}, fetchOptions);
       delete rest._noBody;
+      delete rest._binary;
       const controller = makeController(rest.signal);
       const opts = __spreadProps(__spreadValues({}, rest), { signal: controller ? controller.signal : void 0 });
       const work = (() => __async(this, null, function* () {
@@ -182,11 +184,21 @@ var __provider = (() => {
           throw new HttpError("r\xE9ponse invalide du runtime fetch", 0, url);
         }
         let text = "";
+        let bytes = null;
         if (!noBody) {
           try {
-            text = yield res.text();
+            if (binary && res && typeof res.arrayBuffer === "function") {
+              bytes = new Uint8Array(yield res.arrayBuffer());
+            } else {
+              text = yield res.text();
+              if (binary) {
+                bytes = new Uint8Array(text.length);
+                for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 255;
+              }
+            }
           } catch (e) {
             text = "";
+            bytes = null;
           }
         }
         let contentType = "";
@@ -203,7 +215,7 @@ var __provider = (() => {
           if (res.url && typeof res.url === "string") finalUrl = res.url;
         } catch (e) {
         }
-        return { res, text, finalUrl, contentType };
+        return { res, text, bytes, finalUrl, contentType };
       }))();
       if (typeof setTimeout !== "function") {
         return action(yield work);
@@ -257,6 +269,40 @@ var __provider = (() => {
       }
       return {
         text: out.text,
+        status: out.res.status,
+        finalUrl: out.finalUrl,
+        contentType: out.contentType || ""
+      };
+    });
+  }
+  function fetchBytes(_0) {
+    return __async(this, arguments, function* (url, options = {}) {
+      const timeout = options.timeout || 2e4;
+      let out;
+      try {
+        out = yield raceFetch(
+          url,
+          {
+            method: options.method || "GET",
+            headers: __spreadValues(__spreadValues({}, DEFAULT_HEADERS), options.headers || {}),
+            body: options.body !== void 0 ? options.body : void 0,
+            timeout,
+            _binary: true
+          },
+          timeout,
+          (won) => won
+        );
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError("r\xE9seau injoignable: " + (err && err.message ? err.message : String(err)), 0, url);
+      }
+      if (out.res.status < 200 || out.res.status >= 300) {
+        const detail = out.text ? out.text.slice(0, 200) : "";
+        throw new HttpError("HTTP " + out.res.status + (detail ? " \u2014 " + detail : ""), out.res.status, url);
+      }
+      return {
+        bytes: out.bytes || new Uint8Array(0),
+        text: out.text || "",
         status: out.res.status,
         finalUrl: out.finalUrl,
         contentType: out.contentType || ""
@@ -500,7 +546,93 @@ var __provider = (() => {
     }
   });
 
+  // src/utils/mp4.js
+  function mp4MaxHeight(u8) {
+    if (!u8 || u8.length < 16) return 0;
+    let dv;
+    try {
+      dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    } catch (e) {
+      return 0;
+    }
+    const type = (off) => String.fromCharCode(u8[off + 4], u8[off + 5], u8[off + 6], u8[off + 7]);
+    let best = 0;
+    const walk = (start, end, depth) => {
+      let o = start;
+      while (o + 8 <= end && depth < 4) {
+        let size = dv.getUint32(o);
+        const t = type(o);
+        if (size === 1) {
+          try {
+            size = Number(dv.getBigUint64(o + 8));
+          } catch (e) {
+            return;
+          }
+        } else if (size === 0) {
+          size = end - o;
+        }
+        if (size < 8 || o + size > end + 1) {
+          if (t === "moov" && size >= 8) {
+            walk(o + 8, end, depth + 1);
+          }
+          return;
+        }
+        if (t === "moov") {
+          walk(o + 8, Math.min(o + size, end), depth + 1);
+        } else if (t === "trak") {
+          walk(o + 8, Math.min(o + size, end), depth + 1);
+        } else if (t === "tkhd") {
+          const endBox = o + size;
+          if (size >= 84 && endBox <= end) {
+            const w = dv.getUint32(endBox - 8) / 65536;
+            const h2 = dv.getUint32(endBox - 4) / 65536;
+            if (h2 > best) best = h2;
+          }
+        }
+        o += size;
+      }
+    };
+    walk(0, u8.length, 0);
+    const h = Math.round(best);
+    return h >= 96 && h <= 8192 ? h : 0;
+  }
+  function mp4QualityLabel(height) {
+    const h = parseInt(height, 10);
+    if (!(h > 0)) return "";
+    return h >= 2e3 ? "4K" : h + "p";
+  }
+  function bytesLookHtml(u8) {
+    if (!u8 || !u8.length) return false;
+    let i = 0;
+    while (i < u8.length && (u8[i] === 32 || u8[i] === 10 || u8[i] === 13 || u8[i] === 9)) i++;
+    if (i >= u8.length) return false;
+    if (u8[i] === 60) return true;
+    if (u8[i] === 239 && u8[i + 1] === 187 && u8[i + 2] === 191 && u8[i + 3] === 60) return true;
+    return false;
+  }
+  var init_mp4 = __esm({
+    "src/utils/mp4.js"() {
+    }
+  });
+
   // src/core/verify.js
+  function mp4HeadQuality(st, headers, left) {
+    return __async(this, null, function* () {
+      try {
+        const res = yield fetchBytes(st.url, {
+          method: "GET",
+          headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: "*/*" }),
+          timeout: Math.min(MOOV_MS, left())
+        });
+        const u8 = res.bytes;
+        if (!u8 || !u8.length || bytesLookHtml(u8)) return "";
+        const h = mp4MaxHeight(u8);
+        return h ? mp4QualityLabel(h) : "";
+      } catch (e) {
+        return "";
+      }
+    });
+  }
   function bestHlsQuality(text) {
     let best = 0;
     const re = /RESOLUTION=(\d+)x(\d+)/gi;
@@ -546,26 +678,24 @@ var __provider = (() => {
           const res2 = yield fetchText(st.url, { method: "HEAD", headers, timeout });
           if (looksHtml(res2.text) || /text\/html/i.test(res2.contentType || "")) {
             try {
-              const sniff = yield fetchText(st.url, {
+              const sniff = yield fetchBytes(st.url, {
                 method: "GET",
-                headers: Object.assign({}, headers, { Range: SEGMENT_RANGE }),
-                timeout: Math.min(1500, left())
+                headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: "*/*" }),
+                timeout: Math.min(MOOV_MS, left())
               });
-              const body = String(sniff.text || "");
-              if (looksHtml(body)) return { ok: false, why: "corps HTML (content-type mensonger)" };
-              if (!body) return { ok: null, why: "corps vide (content-type mensonger)" };
-              const isFtyp = body.length > 8 && body.slice(4, 8) === "ftyp";
-              if (!isFtyp && body.charAt(0) === "<") {
-                return { ok: false, why: "corps HTML (content-type mensonger)" };
-              }
-              const q2 = qualityFromUrl(res2.finalUrl || st.url);
+              const u8 = sniff.bytes;
+              if (!u8 || !u8.length) return { ok: null, why: "corps vide (content-type mensonger)" };
+              if (bytesLookHtml(u8)) return { ok: false, why: "corps HTML (content-type mensonger)" };
+              let q2 = qualityFromUrl(res2.finalUrl || st.url);
+              if (!q2) q2 = mp4QualityLabel(mp4MaxHeight(u8));
               return { ok: true, quality: q2, why: "content-type mensonger, m\xE9dia confirm\xE9" };
             } catch (err2) {
               if (neutralErr(err2)) return { ok: null, why: "sonde interrompue" };
               return { ok: null, why: "go\xFBtage impossible (content-type mensonger)" };
             }
           }
-          const q = qualityFromUrl(res2.finalUrl || st.url);
+          let q = qualityFromUrl(res2.finalUrl || st.url);
+          if (!q) q = yield mp4HeadQuality(st, headers, left);
           return { ok: true, quality: q };
         } catch (err) {
           const status = statusOf(err);
@@ -668,17 +798,20 @@ var __provider = (() => {
       return good;
     });
   }
-  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE;
+  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE, MOOV_RANGE, MOOV_MS;
   var init_verify = __esm({
     "src/core/verify.js"() {
       init_http();
       init_stream();
+      init_mp4();
       PROBE_MS = 4e3;
       PROBE_MAX = 10;
       PROBE_BUDGET_MS = 8e3;
       MIN_REMAINING_MS = 1500;
       DEEP_MAX = 8;
       SEGMENT_RANGE = "bytes=0-16383";
+      MOOV_RANGE = "bytes=0-131071";
+      MOOV_MS = 2500;
     }
   });
 
@@ -3282,11 +3415,55 @@ var __provider = (() => {
   });
 
   // src/sources/bflix.js
-  var bflix_default;
+  function bflixLangKey(audioLangs, hasFrSubs, origLang) {
+    const uniq = [];
+    for (const raw of audioLangs || []) {
+      const l = String(raw || "").toLowerCase().split("-")[0];
+      if (l && uniq.indexOf(l) === -1) uniq.push(l);
+    }
+    if (uniq.length === 1) return uniq[0] === "fr" ? "vf" : hasFrSubs ? "vostfr" : "vo";
+    if (String(origLang || "").toLowerCase() === "fr") return "vf";
+    return hasFrSubs ? "vostfr" : "vo";
+  }
+  function hlsAudioLangs(stream, timeoutMs, signal) {
+    return __async(this, null, function* () {
+      try {
+        const headers = {};
+        if (stream.referer) headers.Referer = stream.referer;
+        if (stream.ua) headers["User-Agent"] = stream.ua;
+        if (stream.provider && stream.provider !== "flixhq") headers.Origin = "https://vidnest.fun";
+        const res = yield fetchText(stream.url, {
+          method: "GET",
+          headers,
+          timeout: Math.min(3e3, timeoutMs || 3e3),
+          signal
+        });
+        const text = String(res.text || "");
+        if (text.indexOf("#EXTM3U") === -1) return [];
+        const langs = [];
+        for (const line of text.split("\n")) {
+          if (line.indexOf("TYPE=AUDIO") === -1) continue;
+          const m = /LANGUAGE="([^"]+)"/.exec(line);
+          if (m) {
+            langs.push(m[1]);
+            continue;
+          }
+          const n = /NAME="([^"]+)"/.exec(line);
+          if (n && /french|français|francais|^vf$/i.test(n[1])) langs.push("fr");
+        }
+        return langs;
+      } catch (e) {
+        return [];
+      }
+    });
+  }
+  var LANG_LABELS3, bflix_default;
   var init_bflix = __esm({
     "src/sources/bflix.js"() {
       init_bflix_scrape();
       init_stream();
+      init_http();
+      LANG_LABELS3 = { vf: "VF", vostfr: "VOSTFR", vo: "VO" };
       bflix_default = {
         id: "bflix",
         label: "BFlix",
@@ -3294,21 +3471,26 @@ var __provider = (() => {
         run(ctx) {
           return __async(this, null, function* () {
             const { cfg, signal, push, tmdbId, mediaType, season: season2, episode } = ctx;
-            if (cfg.language === "vf" && !cfg.allowOtherLang) return;
             const isTv = mediaType === "tv";
             const s = parseInt(season2, 10) || 1;
             const e = parseInt(episode, 10) || 1;
             const path = isTv ? "tv/" + tmdbId + "/" + s + "/" + e : "movie/" + tmdbId;
-            let resolved;
-            try {
-              resolved = yield resolveBflix(tmdbId, mediaType, isTv ? s : 0, isTv ? e : 0, {
-                timeout: cfg.timeoutMs,
-                signal
-              });
-            } catch (err) {
-              console.warn("[bflix] \xE9chou\xE9 : " + (err && err.message ? err.message : err));
-              return;
-            }
+            const resolvedP = (() => __async(this, null, function* () {
+              try {
+                return yield resolveBflix(tmdbId, mediaType, isTv ? s : 0, isTv ? e : 0, {
+                  timeout: cfg.timeoutMs,
+                  signal
+                });
+              } catch (err) {
+                console.warn("[bflix] \xE9chou\xE9 : " + (err && err.message ? err.message : err));
+                return [];
+              }
+            }))();
+            const metaP = Promise.resolve(ctx.meta).then((m) => m).catch(() => null);
+            const [resolvedArr, meta] = [yield resolvedP, yield metaP];
+            const resolved = resolvedArr || [];
+            const orig = meta && meta.originalLanguage || "";
+            if (cfg.language === "vf" && !cfg.allowOtherLang && orig !== "fr") return;
             if (!resolved.length) return;
             let subs = [];
             try {
@@ -3325,8 +3507,15 @@ var __provider = (() => {
               return track;
             });
             const hasFr = subs.some((x) => x.lang === "fr");
-            const langKey = hasFr ? "vostfr" : "vo";
-            const langLabel3 = hasFr ? "VOSTFR" : "VO";
+            const firstHls = resolved.find((r) => /\.m3u8(\?|$)/i.test(String(r.url || "")));
+            const audioLangs = firstHls ? yield hlsAudioLangs(firstHls, cfg.timeoutMs, signal) : [];
+            const langKey = bflixLangKey(audioLangs, hasFr, orig);
+            const langLabel3 = LANG_LABELS3[langKey] || langKey.toUpperCase();
+            if (audioLangs.length) {
+              console.log("[bflix] audio " + JSON.stringify(audioLangs) + " \u2192 " + langLabel3);
+            } else {
+              console.log("[bflix] audio mux\xE9 non d\xE9crit (original=" + (orig || "?") + ") \u2192 " + langLabel3);
+            }
             for (const r of resolved) {
               const kind = /\.m3u8(\?|$)/i.test(String(r.url || "")) ? "HLS" : "MP4";
               const headers = {};
@@ -4301,7 +4490,7 @@ var __provider = (() => {
         );
         return [];
       }
-      const langLabel3 = LANG_LABELS3[lang] || String(lang).toUpperCase();
+      const langLabel3 = LANG_LABELS4[lang] || String(lang).toUpperCase();
       const out = [];
       for (const r of resolved) {
         out.push(
@@ -4337,7 +4526,7 @@ var __provider = (() => {
     if (ua) headers["User-Agent"] = ua;
     return headers;
   }
-  var BASE, HEADERS3, HOST_TIMEOUT_MS2, MAX_NEWS_IDS, HOST_ORDER, LANG_LABELS3, LANG_KEYS, tagCache, seasonsCache, TAG_TTL_MS, french_stream_default, HINTS;
+  var BASE, HEADERS3, HOST_TIMEOUT_MS2, MAX_NEWS_IDS, HOST_ORDER, LANG_LABELS4, LANG_KEYS, tagCache, seasonsCache, TAG_TTL_MS, french_stream_default, HINTS;
   var init_french_stream = __esm({
     "src/sources/french-stream.js"() {
       init_http();
@@ -4363,7 +4552,7 @@ var __provider = (() => {
         "netu",
         "vidzy"
       ];
-      LANG_LABELS3 = { vf: "VF", vostfr: "VOSTFR", vo: "VO" };
+      LANG_LABELS4 = { vf: "VF", vostfr: "VOSTFR", vo: "VO" };
       LANG_KEYS = {
         vf: ["vff", "vfq", "default", "vf"],
         vostfr: ["vostfr"],
@@ -4586,7 +4775,7 @@ var __provider = (() => {
           console.log("[wookafr] host " + provider + " \xE9chou\xE9 : " + (err && err.message ? err.message : err));
           continue;
         }
-        const langLabel3 = LANG_LABELS4[cand.lang] || "VF";
+        const langLabel3 = LANG_LABELS5[cand.lang] || "VF";
         ctx.push(
           makeStream({
             title: composeTitle({
@@ -4870,7 +5059,7 @@ var __provider = (() => {
     if (ua) headers["User-Agent"] = ua;
     return headers;
   }
-  var DOMAINS2, HEADERS4, TIMEOUTS2, MAX_CARDS, MAX_HOST_CANDIDATES, MAX_STREAMS2, HOST_PRIORITY, DEFAULT_PRIORITY, LANG_SECTIONS, EPISODE_URL_RE, SM_PUBLIC_RE, LANG_LABELS4, searchCache2, SEARCH_TTL_MS2, wookafr_default;
+  var DOMAINS2, HEADERS4, TIMEOUTS2, MAX_CARDS, MAX_HOST_CANDIDATES, MAX_STREAMS2, HOST_PRIORITY, DEFAULT_PRIORITY, LANG_SECTIONS, EPISODE_URL_RE, SM_PUBLIC_RE, LANG_LABELS5, searchCache2, SEARCH_TTL_MS2, wookafr_default;
   var init_wookafr = __esm({
     "src/sources/wookafr.js"() {
       init_http();
@@ -4912,7 +5101,7 @@ var __provider = (() => {
       };
       EPISODE_URL_RE = /\/episodes\/.*-saison-(\d+)-episode-(\d+)(?:-\d+)?\/?$/i;
       SM_PUBLIC_RE = /sm_Public\s*=\s*\{[^}]*?["']?url["']?\s*:\s*["']([^"']+)["'][^}]*?["']?nonce["']?\s*:\s*["']([^"']+)["']/;
-      LANG_LABELS4 = { vf: "VF", vostfr: "VOSTFR", vo: "VO" };
+      LANG_LABELS5 = { vf: "VF", vostfr: "VOSTFR", vo: "VO" };
       searchCache2 = createTtlCache(30);
       SEARCH_TTL_MS2 = 10 * 60 * 1e3;
       wookafr_default = {

@@ -1,6 +1,7 @@
 // Tests offline de la vérification de liens et du nom affiché.
 import { verifyStreams, probeOne, nextHlsUri } from '../src/core/verify.js';
 import { finalizeStreams, makeStream } from '../src/core/stream.js';
+import { buildMp4 } from './helpers_mp4.mjs';
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : ' → ' + d)); };
 const calls = [];
@@ -32,6 +33,21 @@ globalThis.fetch = async (url, o = {}) => {
   if (url.includes('lying.mp4')) {
     if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
     return { status: 200, url, headers: h('text/html'), text: async () => '\u0000\u0000\u0000\u0018ftypisom\u0000\u0000\u0002\u0000isomiso2avc1mp41' };
+  }
+  // v3.1.10 — qualité réelle des MP4 via moov/tkhd (octets bruts, Range 128 Ko)
+  if (url.includes('lying1080.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
+    const b = buildMp4(1080, { version: 0 });
+    return { status: 206, url, headers: h('text/html'), arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), text: async () => '' };
+  }
+  if (url.includes('bare4k.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('video/mp4'), text: async () => '' };
+    const b = buildMp4(2160, { version: 1 });
+    return { status: 206, url, headers: h('video/mp4'), arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), text: async () => '' };
+  }
+  if (url.includes('lyinghtml.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
+    return { status: 200, url, headers: h('text/html'), text: async () => '<html>captcha</html>' };
   }
   return { status: 200, url, text: async () => '' };
 };
@@ -96,7 +112,7 @@ const lying = finalizeStreams([mk('W · fastflux · MP4 · VF', 'https://t.examp
 const outLying = await verifyStreams(lying, { remainingMs: 20000 });
 ok('MP4 200 text/html + corps binaire ftyp → CONSERVÉ (fausse mort réparée)', outLying.length === 1, JSON.stringify(outLying.map(s => s.name)));
 const sniffCall = calls.find(c => c[1].includes('lying.mp4') && c[0] === 'GET');
-ok('goûtage en GET Range borné', !!sniffCall && sniffCall[2].Range === 'bytes=0-16383', JSON.stringify(sniffCall && sniffCall[2]));
+ok('goûtage en GET Range borné (128 Ko, lit aussi le moov)', !!sniffCall && sniffCall[2].Range === 'bytes=0-131071', JSON.stringify(sniffCall && sniffCall[2]));
 
 const emptyLying = finalizeStreams([mk('W · fastflux vide · MP4 · VF', 'https://t.example/voidlying.mp4', 'webflix')], cfg);
 const outEmpty = await verifyStreams(emptyLying, { remainingMs: 20000 });
@@ -109,5 +125,19 @@ const weakFin = finalizeStreams([
 ok('weak player rangé en dernier avec ⚠ (finalize)', weakFin[0].url.includes('w.example') && weakFin[1].url.includes('w2.example') && weakFin[1].name.endsWith(' ⚠'), weakFin.map(s => s.name).join(' | '));
 const outWeak = await verifyStreams(weakFin, { remainingMs: 20000 });
 ok('verify conserve le tri weak, ⚠ non doublé', outWeak[1].url.includes('w2.example') && outWeak[1].name.endsWith(' ⚠') && !outWeak[1].name.endsWith(' ⚠ ⚠'), outWeak.map(s => s.name).join(' | '));
+
+// v3.1.10 — qualité réelle des MP4 via moov/tkhd (bug utilisateur : fastflux
+// webflix affiché « Direct » alors qu'il est en 1080p ; l'URL ne porte aucun
+// motif de résolution et l'API répond quality=Unknown).
+{
+  const r1 = await probeOne({ url: 'https://h.example/lying1080.mp4', headers: {} }, 4000, false);
+  ok('CDN mensonger + moov 1080 → conservé + qualité « 1080p »', r1.ok === true && r1.quality === '1080p', JSON.stringify(r1));
+  const r2 = await probeOne({ url: 'https://h.example/bare4k.mp4', headers: {} }, 4000, false);
+  ok('MP4 sain sans motif URL + moov tkhd v1 2160 → « 4K »', r2.ok === true && r2.quality === '4K', JSON.stringify(r2));
+  const r3 = await probeOne({ url: 'https://h.example/lyinghtml.mp4', headers: {} }, 4000, false);
+  ok('CDN mensonger + HTML réel → toujours KO (octets)', r3.ok === false, JSON.stringify(r3));
+  const q4 = await verifyStreams(finalizeStreams([mk('W · Lupin · MP4 · VF', 'https://t.example/bare4k.mp4', 'webflix')], cfg), { remainingMs: 20000 });
+  ok('verifyStreams propage la qualité moov dans la liste Nuvio', q4.length === 1 && q4[0].quality === '4K', JSON.stringify(q4.map(s => s.quality)));
+}
 console.log(`\nRésultat : ${pass} OK, ${fail} échec(s)`);
 process.exit(fail ? 1 : 0);
