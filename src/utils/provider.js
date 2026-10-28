@@ -6,7 +6,10 @@
  * - createSettingsLayout(items)     : hook onSettings pour l'UI NuvioMobile.
  */
 
-const PROVIDER_BUDGET_MS = 60000;
+/** Plafond absolu du provider (v3.1.2 : 30 s — rester sous le timeout de
+ * réponse de l'app Nuvio ; l'extraction rend elle-même ses résultats
+ * partiels à son propre budget, ici on n'est qu'un dernier filet). */
+const PROVIDER_BUDGET_MS = 30000;
 
 export function safeConfig(key, defaultVal) {
     try {

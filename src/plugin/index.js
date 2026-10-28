@@ -89,8 +89,9 @@ module.exports = {
             type: 'select',
             key: 'timeoutSec',
             label: 'Timeout réseau',
-            defaultValue: '30',
+            defaultValue: '10',
             options: [
+                { label: '10 s (recommandé)', value: '10' },
                 { label: '15 s', value: '15' },
                 { label: '30 s', value: '30' },
                 { label: '45 s', value: '45' },
@@ -99,6 +100,10 @@ module.exports = {
         {
             type: 'info',
             label: 'Astuce : certains hosts (uqload, vidzy…) sont plus lents le soir ; avec « rendre dès que c’est bon », les sources lentes ne te bloquent plus — essaie un autre flux.',
+        },
+        {
+            type: 'info',
+            label: 'Si TOUTES les sources échouent chez toi : ton fournisseur d’accès bloque peut-être les domaines (DNS). Un VPN ou le DNS 1.1.1.1 règle le problème — le plugin répond toujours avant le timeout de Nuvio, liste vide ou pas.',
         },
     ]),
 };

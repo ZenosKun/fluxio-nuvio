@@ -21,7 +21,7 @@ const SOFT_MS = 5000;      // échéance douce : au-delà, ≥1 flux pertinent s
                            //  son propre timeout — rester court est vital)
 
 export function createStopper({ startedAt, hardMs, softMs }) {
-    const hard = hardMs > 0 ? hardMs : 50000;
+    const hard = hardMs > 0 ? hardMs : 25000;
     const soft = softMs > 0 ? softMs : SOFT_MS;
     const softAt = startedAt + soft;
     const hardAt = startedAt + hard;

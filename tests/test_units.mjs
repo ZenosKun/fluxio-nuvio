@@ -162,13 +162,13 @@ t('composeTitle : épisode paddé, type détecté', () => {
 
 console.log('\n— settings.js : réglages v3 —');
 
-t('défauts : vf, toutes sources, earlyExit ON, detectAnime ON, budget 50 s', () => {
+t('défauts : vf, toutes sources, earlyExit ON, detectAnime ON, budget 25 s (v3.1.2 anti-timeout)', () => {
     const cfg = readConfig();
     assert.strictEqual(cfg.language, 'vf');
     assert.strictEqual(cfg.earlyExit, true);
     assert.strictEqual(cfg.detectAnime, true);
     assert.strictEqual(cfg.allowOtherLang, true);
-    assert.strictEqual(cfg.budgetMs, 50000);
+    assert.strictEqual(cfg.budgetMs, 25000);
     assert.deepStrictEqual(cfg.fallbackLangs, ['vf', 'vostfr', 'vo']);
 });
 
@@ -187,11 +187,11 @@ t('booléens natifs ET chaînes tolérés (earlyExit=false natif)', () => {
     assert.strictEqual(cfg.detectAnime, false);
 });
 
-t('compat réglage v2 « sites » accepté, timeout borné', () => {
+t('compat réglage v2 « sites » accepté, timeout borné (défaut 10 s en v3.1.2)', () => {
     globalThis.SCRAPER_SETTINGS = { sites: 'fstream, bflix', timeoutSec: '200' };
     const cfg = readConfig();
     assert.strictEqual(cfg.sources, 'fstream,bflix');
-    assert.strictEqual(cfg.timeoutMs, 30000);
+    assert.strictEqual(cfg.timeoutMs, 10000);
     delete globalThis.SCRAPER_SETTINGS;
 });
 

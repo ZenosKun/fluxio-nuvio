@@ -19,9 +19,12 @@
  *                      réponse, rester court garantit l'affichage)
  *   - tmdbKey        : clé API TMDB personnelle
  *   - serverUrl      : serveur sestudio optionnel (repli)
- *   - timeoutSec     : budget réseau par requête (8-90 s)
- *   - budgetSec      : budget global de l'extraction (10-55 s, SCRAPER_SETTINGS
- *                      uniquement — non exposé dans l'UI, tunable avancé)
+ *   - timeoutSec     : budget réseau par requête (8-90 s, défaut 10 s)
+ *   - budgetSec      : budget global de l'extraction (10-30 s, SCRAPER_SETTINGS
+ *                      uniquement — non exposé dans l'UI, tunable avancé ;
+ *                      défaut 25 s — DOIT rester sous le timeout de réponse
+ *                      de l'app Nuvio, sinon « impossible de charger les
+ *                      streams » au lieu d'une liste propre)
  */
 
 export function getSettingsRaw() {
@@ -94,19 +97,22 @@ export function readConfig() {
         .filter(Boolean)
         .join(',');
 
-    const timeoutSec = parseInt(String(s.timeoutSec || '30'), 10);
+    const timeoutSec = parseInt(String(s.timeoutSec || '10'), 10);
     const timeoutMs =
         Number.isFinite(timeoutSec) && timeoutSec >= 8 && timeoutSec <= 90
             ? timeoutSec * 1000
-            : 30000;
+            : 10000;
 
-    // Budget global de l'extraction : Nuvio coupe le plugin à 60 s de toute
-    // façon ; on garde une marge de sécurité pour rendre des résultats propres.
-    const budgetSec = parseInt(String(s.budgetSec || '50'), 10);
+    // Budget global de l'extraction : v3.1.2 — 25 s max. En production, un
+    // budget plus long fait PLUS de mal que de bien : si les domaines sont
+    // bloqués (DNS FAI fréquent sur les sites de streaming), toutes les
+    // sources pendent, et dépasser le timeout de l'app Nuvio transforme une
+    // liste vide exploitable en erreur « impossible de charger les streams ».
+    const budgetSec = parseInt(String(s.budgetSec || '25'), 10);
     const budgetMs =
-        Number.isFinite(budgetSec) && budgetSec >= 10 && budgetSec <= 55
+        Number.isFinite(budgetSec) && budgetSec >= 10 && budgetSec <= 30
             ? budgetSec * 1000
-            : 50000;
+            : 25000;
 
     return {
         serverUrl,
