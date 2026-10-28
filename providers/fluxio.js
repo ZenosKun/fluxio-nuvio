@@ -1,6 +1,6 @@
 /**
  * Fluxio v3.1.8 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T10:59:12.358Z
+ * Built: 2026-10-28T11:29:51.187Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -492,7 +492,7 @@ var __provider = (() => {
       PROVIDER_NAME = "Fluxio";
       TEST_STREAMS = [
         { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
-        { name: "Fluxio \xB7 TEST MP4 (google)", title: "Test MP4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", quality: "Direct", language: "TEST" }
+        { name: "Fluxio \xB7 TEST MP4", title: "Test MP4", url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4", quality: "Direct", language: "TEST" }
       ];
     }
   });
