@@ -125,3 +125,9 @@ Sans timer, aucune requête en cours ne peut être interrompue. Deux garde-fous 
 - **Nom des flux** : `Fluxio · source · hôte` (l'app n'affiche pas le champ `title`), pour savoir quel hôte pose problème.
 - **Test des liens** (réglage « Tester les liens avant affichage », activé par défaut) : HLS en GET de la playlist, MP4 en HEAD, avec les en-têtes du flux, 8 s au maximum. Les liens morts (403/404/playlist invalide) passent en fin de liste avec ⚠.
 - **Logs** : chaque flux final est journalisé (`[stream] nom | qualité | langue | url | headers=…`) ; lance l'app depuis un terminal pour les voir, puis teste le lien avec `mpv --http-header-fields="Referer: …" "<url>"`.
+
+## Mode diagnostic (activé par défaut jusqu'à nouvel ordre)
+
+Deux flux de test (`TEST HLS`, `TEST MP4`) apparaissent en tête de liste et chaque nom de flux porte le domaine du lien (`@domaine`).
+**Pour le désactiver** : Nuvio → Settings → Plugins → Fluxio → réglages → désactiver « Mode diagnostic ». Ou, sur NuvioTV : `SCRAPER_SETTINGS.selfTest = false`.
+Pense à le désactiver (ou à repasser `defaultValue` et `boolOr(s.selfTest, …)` à `false`) avant de publier le plugin à d'autres.

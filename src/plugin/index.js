@@ -82,7 +82,7 @@ module.exports = {
             label: 'Mode diagnostic (flux de test + domaine des liens)',
             description:
                 'Ajoute 2 flux publics de test en tête de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le problème vient du lecteur de l’app, pas du plugin.',
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             type: 'text',

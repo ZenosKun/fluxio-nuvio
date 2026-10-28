@@ -1,5 +1,5 @@
 /**
- * Fluxio v3.1.5 — multi-sources FR pour Nuvio
+ * Fluxio v3.1.6 — multi-sources FR pour Nuvio
  * Built: 2026-10-28T07:06:37.276Z
  */
 var __provider = (() => {
@@ -78,7 +78,7 @@ var __provider = (() => {
     const detectAnime = boolOr(s.detectAnime, true);
     const earlyExit = boolOr(s.earlyExit, true);
     const verifyLinks = boolOr(s.verifyLinks, true);
-    const selfTest = boolOr(s.selfTest, false);
+    const selfTest = boolOr(s.selfTest, true);
     const softSec = parseInt(String(s.softMs || ""), 10);
     const softMs = Number.isFinite(softSec) && softSec >= 3e3 && softSec <= 15e3 ? softSec : 5e3;
     const useTranscode = s.useTranscode === void 0 || s.useTranscode === null || s.useTranscode === "" ? false : String(s.useTranscode).toLowerCase() === "true";
@@ -4387,7 +4387,7 @@ var __provider = (() => {
             key: "selfTest",
             label: "Mode diagnostic (flux de test + domaine des liens)",
             description: "Ajoute 2 flux publics de test en t\xEAte de liste et le domaine de chaque lien dans son nom. Si les flux de test ne se lisent pas non plus, le probl\xE8me vient du lecteur de l\u2019app, pas du plugin.",
-            defaultValue: false
+            defaultValue: true
           },
           {
             type: "text",
