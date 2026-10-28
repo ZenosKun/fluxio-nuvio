@@ -551,6 +551,65 @@ t('mp4MaxHeight : candidat tkhd farci dans du mdat mais boîte farfelue → reje
     assert.strictEqual(mp4MaxHeight(new Uint8Array(b)), 0);
 });
 
+/* ── v3.1.12 : garde anti faux positifs — 'tkhd' apparu PAR HASARD dans du mdat ── */
+// Leurre : boîte 'tkhd' de géométrie plausible (taille 100 o, version 0,
+// contenue dans le buffer) dont la hauteur/largeur sont contrôlées — c'est
+// exactement à quoi ressemblent des octets vidéo tombés par hasard sur la
+// séquence 'tkhd'. Préfixe mdat (97 o non alignés) : le parcours strict des
+// boîtes doit échouer d'emblée, seul le scan voit le leurre.
+const fakeTkhd = (b, w, h) => {
+    const put32 = (n) => b.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+    put32(100); for (const c of 'tkhd') b.push(c.charCodeAt(0));
+    b.push(0); // version 0
+    for (let i = 0; i < 83; i++) b.push(0x41); // farcissage jusqu'aux 8 derniers octets
+    put32(w * 65536); put32(h * 65536); // width, height (16.16)
+};
+const junkPrefix = (b) => { for (let i = 0; i < 97; i++) b.push(i === 0 ? 0x00 : (i * 53 + 7) & 0xff); };
+
+t('mp4MaxHeight : leurre tkhd 1359 dans du mdat → 0 (hauteur non standard)', () => {
+    // Cas réel remonté : 1359 « lu » par le scan alors que le lecteur
+    // affiche 1280×720 — 1359 passait les bornes brutes 96-8192.
+    const b = [];
+    junkPrefix(b);
+    fakeTkhd(b, 1920, 1359);
+    for (let i = 0; i < 32; i++) b.push(0x41); // la boîte doit tenir dans le buffer
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(b)), 0);
+});
+t('mp4MaxHeight : leurre 1359 + VRAI tkhd 1280×720 en queue → 720 (bug utilisateur)', () => {
+    // Avant le garde : le scan prenait le MAX des candidats → 1359 gagnait
+    // sur le vrai 720. Le leurre rejeté, le tkhd authentique du moov final
+    // refait surface.
+    const b = [];
+    junkPrefix(b);
+    fakeTkhd(b, 1920, 1359);
+    for (const x of buildMp4Tail(720, { version: 0 })) b.push(x);
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(b)), 720);
+});
+t('mp4MaxHeight : leurre hauteur standard mais largeur absurde → 0 (ratio w/h)', () => {
+    // Garde-fou largeur : w=0 (piste non vidéo), ratio 0,09 (portrait
+    // extrême) ou 4,0 (au-delà de tout cinéma) → rejeté malgré la hauteur.
+    for (const [w, h] of [[0, 720], [64, 720], [2880, 720]]) {
+        const b = [];
+        junkPrefix(b);
+        fakeTkhd(b, w, h);
+        for (let i = 0; i < 32; i++) b.push(0x41);
+        assert.strictEqual(mp4MaxHeight(new Uint8Array(b)), 0,
+            'leurre ' + w + 'x' + h + ' doit être rejeté');
+    }
+});
+t('mp4MaxHeight : tolérance ± 8 px — 1084 accepté, 1092 rejeté', () => {
+    const accept = [];
+    junkPrefix(accept);
+    fakeTkhd(accept, 1927, 1084); // 1080 + 4 (arrondi/crop) — ratio 1,78
+    for (let i = 0; i < 32; i++) accept.push(0x41);
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(accept)), 1084);
+    const reject = [];
+    junkPrefix(reject);
+    fakeTkhd(reject, 1941, 1092); // 1080 + 12 : hors tolérance
+    for (let i = 0; i < 32; i++) reject.push(0x41);
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(reject)), 0);
+});
+
 /* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */
 import { bflixLangKey } from '../src/sources/bflix.js';
 t('bflixLangKey : Lupin (original fr, subs fr, audio non décrit) → VF (bug utilisateur)', () => {

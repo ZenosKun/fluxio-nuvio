@@ -23,11 +23,35 @@
  * scan par signature des 'tkhd' sur tout le buffer — sans hypothèse
  * d'alignement — avec garde-fous anti-faux positifs (taille de boîte
  * plausible 92-208 o, version 0-1, hauteur vidéo plausible 96-8192).
+ *
+ * v3.1.12 complément (retour utilisateur) : un FAUX POSITIF du scan — dans
+ * un mdat, la séquence d'octets 'tkhd' peut apparaître PAR HASARD (hauteur
+ * 1359 « lue » alors que le lecteur affiche 1280×720 ; 1359 passait les
+ * bornes brutes 96-8192). Le scan n'accepte plus qu'une hauteur STANDARD
+ * ± 8 px (arrondi/crop) ET une largeur cohérente (ratio w/h 1,2-3,2) — un
+ * leurre géométriquement absurde ne fait plus de libellé fantaisiste.
  */
+
+/** Hauteurs vidéo standard (anti faux positifs du scan, v3.1.12) : une
+ * hauteur qui n'est pas une résolution réelle — ou très proche (± 8 px,
+ * arrondi/crop d'encodage) — provient d'octets apparus par hasard dans du
+ * mdat, pas d'un vrai tkhd. */
+const STD_HEIGHTS = [240, 360, 480, 576, 720, 1080, 1440, 2160];
+function isPlausibleHeight(h) {
+    for (let i = 0; i < STD_HEIGHTS.length; i++) {
+        if (Math.abs(h - STD_HEIGHTS[i]) <= 8) return true;
+    }
+    return false;
+}
 
 /** Scan par signature des tkhd (v3.1.12) : retrouve la hauteur dans un chunk
  * non aligné (queue de fichier). Chaque candidat 'tkhd' n'est accepté que si
- * sa boîte déclarée est plausible et entièrement contenue dans le buffer. */
+ * sa boîte déclarée est plausible et entièrement contenue dans le buffer,
+ * que sa hauteur est STANDARD ± 8 px et que sa largeur est cohérente
+ * (ratio w/h 1,2-3,2 : 4:3 1,33, 16:9 1,78, scope 2,39 et 1920×720 2,67
+ * passent ; w=0, portrait/square ou ratio absurde non). Bornes plus larges
+ * que le 1,2-2,5 initial proposé : un vrai film 1920×720 (2,67) serait
+ * sinon rejeté — régression pour le cinéma scope. */
 function scanTkhd(u8, dv) {
     let best = 0;
     for (let i = 4; i + 12 <= u8.length; i++) {
@@ -36,7 +60,11 @@ function scanTkhd(u8, dv) {
         const size = dv.getUint32(i - 4);
         if (size < 92 || size > 208 || i - 4 + size > u8.length) continue;
         const h = Math.round(dv.getUint32(i - 4 + size - 4) / 65536);
-        if (h >= 96 && h <= 8192 && h > best) best = h;
+        const w = Math.round(dv.getUint32(i - 4 + size - 8) / 65536);
+        // Anti faux positifs (retour utilisateur : 1359 lu dans du mdat,
+        // lecteur = 1280×720) : hauteur standard ± 8 px ET largeur cohérente.
+        if (h >= 96 && h <= 8192 && isPlausibleHeight(h) && w > 0 &&
+            w / h >= 1.2 && w / h <= 3.2 && h > best) best = h;
     }
     return best;
 }

@@ -1,8 +1,11 @@
 /**
  * Builder de MP4 synthétique partagé par les tests (test_units, test_verify).
- * ftyp + moov[trak[tkhd]] + mdat — faststart, width 1920, hauteur paramétrée.
- * tkhd v0 : 8 (hdr) + 4 (ver/flags) + 80 (payload) = 92 o ; v1 = 104 o.
- * width/height = 8 DERNIERS octets, virgule fixe 16.16.
+ * ftyp + moov[trak[tkhd]] + mdat — faststart, largeur proportionnelle 16:9,
+ * hauteur paramétrée. tkhd v0 : 8 (hdr) + 4 (ver/flags) + 80 (payload) =
+ * 92 o ; v1 = 104 o. width/height = 8 DERNIERS octets, virgule fixe 16.16.
+ * Largeur proportionnelle (v3.1.12) : le scanTkhd valide désormais le ratio
+ * w/h (1,2-3,2) — un 1920×2160 synthétique (ratio 0,89) serait rejeté comme
+ * un leurre. 1080→1920, 2160→3840, 720→1280.
  */
 
 /** Construit un moov complet [moov[trak[tkhd]]] (tableau d'octets), tailles
@@ -30,7 +33,8 @@ function buildMoov(height, v) {
     u32(0); u32(0); // reserved[2] (u32 x2)
     u16(0); u16(0); u16(0x0100); u16(0); // layer, alternate_group, volume, reserved
     for (let i = 0; i < 36; i++) bytes.push(0); // matrix
-    u32(1920 * 65536); u32(height * 65536); // width, height (16.16)
+    const w16x9 = Math.floor((height * 16) / 9); // 1080→1920, 2160→3840, 720→1280
+    u32(w16x9 * 65536); u32(height * 65536); // width, height (16.16)
     // patch tailles parentes (trak, moov)
     const tkhdEnd = bytes.length;
     const trakSize = tkhdEnd - trakStart;

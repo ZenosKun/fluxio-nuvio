@@ -1,6 +1,6 @@
 /**
  * Fluxio v3.1.12 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T18:18:36.257Z
+ * Built: 2026-10-28T18:38:57.948Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -563,6 +563,12 @@ var __provider = (() => {
   });
 
   // src/utils/mp4.js
+  function isPlausibleHeight(h) {
+    for (let i = 0; i < STD_HEIGHTS.length; i++) {
+      if (Math.abs(h - STD_HEIGHTS[i]) <= 8) return true;
+    }
+    return false;
+  }
   function scanTkhd(u8, dv) {
     let best = 0;
     for (let i = 4; i + 12 <= u8.length; i++) {
@@ -571,7 +577,8 @@ var __provider = (() => {
       const size = dv.getUint32(i - 4);
       if (size < 92 || size > 208 || i - 4 + size > u8.length) continue;
       const h = Math.round(dv.getUint32(i - 4 + size - 4) / 65536);
-      if (h >= 96 && h <= 8192 && h > best) best = h;
+      const w = Math.round(dv.getUint32(i - 4 + size - 8) / 65536);
+      if (h >= 96 && h <= 8192 && isPlausibleHeight(h) && w > 0 && w / h >= 1.2 && w / h <= 3.2 && h > best) best = h;
     }
     return best;
   }
@@ -644,8 +651,10 @@ var __provider = (() => {
     if (u8[i] === 239 && u8[i + 1] === 187 && u8[i + 2] === 191 && u8[i + 3] === 60) return true;
     return false;
   }
+  var STD_HEIGHTS;
   var init_mp4 = __esm({
     "src/utils/mp4.js"() {
+      STD_HEIGHTS = [240, 360, 480, 576, 720, 1080, 1440, 2160];
     }
   });
 
