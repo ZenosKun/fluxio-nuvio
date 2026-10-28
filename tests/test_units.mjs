@@ -597,17 +597,45 @@ t('mp4MaxHeight : leurre hauteur standard mais largeur absurde → 0 (ratio w/h)
             'leurre ' + w + 'x' + h + ' doit être rejeté');
     }
 });
-t('mp4MaxHeight : tolérance ± 8 px — 1084 accepté, 1092 rejeté', () => {
+t('mp4MaxHeight : tolérance ± 8 px — 1084 accepté (→ bucket 1080), 1092 rejeté', () => {
     const accept = [];
     junkPrefix(accept);
     fakeTkhd(accept, 1927, 1084); // 1080 + 4 (arrondi/crop) — ratio 1,78
     for (let i = 0; i < 32; i++) accept.push(0x41);
-    assert.strictEqual(mp4MaxHeight(new Uint8Array(accept)), 1084);
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(accept)), 1080); // reclassifié par la largeur 1927
     const reject = [];
     junkPrefix(reject);
     fakeTkhd(reject, 1941, 1092); // 1080 + 12 : hors tolérance
     for (let i = 0; i < 32; i++) reject.push(0x41);
     assert.strictEqual(mp4MaxHeight(new Uint8Array(reject)), 0);
+});
+t('mp4MaxHeight : 1920×800 crop scope d un 1080 → 1080p (bug utilisateur)', () => {
+    // Panel lecteur : « 1920 × 800 (1080p) » — cinémascope 2,40:1 taillé
+    // dans un master 1080p. La hauteur seule donnait « 800p » ; la largeur
+    // décide, comme chez le lecteur et le nommage P2P.
+    const u8 = buildMp4(800, { width: 1920 });
+    assert.strictEqual(mp4MaxHeight(u8), 1080);
+    assert.strictEqual(mp4QualityLabel(mp4MaxHeight(u8)), '1080p');
+});
+t('mp4MaxHeight : QUEUE non faststart 1920×800 → scan scope → 1080', () => {
+    // 800 n est pas une hauteur standard ± 8 : le scan l accepte via le
+    // ratio cinéma (2,40 ≥ 1,8, hauteur dans la fourchette des crops) puis
+    // la reclassifie par la largeur → bucket 1080.
+    const tail = buildMp4Tail(800, { width: 1920, version: 0 });
+    assert.strictEqual(mp4MaxHeight(tail), 1080);
+});
+t('mp4MaxHeight : 1280×536 crop scope d un 720 → 720p', () => {
+    assert.strictEqual(mp4MaxHeight(buildMp4(536, { width: 1280 })), 720);
+    assert.strictEqual(mp4QualityLabel(720), '720p');
+});
+
+/* ── v3.1.12 : crops scope côté HLS (bestHlsQuality, importé en tête) ───── */
+t('bestHlsQuality : RESOLUTION=1920x800 (scope) → 1080p, 1280x536 → 720p', () => {
+    assert.strictEqual(bestHlsQuality('#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x800\nv.m3u8'), '1080p');
+    assert.strictEqual(bestHlsQuality('#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x536\nv.m3u8'), '720p');
+    assert.strictEqual(bestHlsQuality('#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080\nv.m3u8'), '1080p');
+    assert.strictEqual(bestHlsQuality('#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=3840x1608\nv.m3u8'), '4K');
+    assert.strictEqual(bestHlsQuality(''), '');
 });
 
 /* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */

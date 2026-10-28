@@ -9,8 +9,9 @@
  */
 
 /** Construit un moov complet [moov[trak[tkhd]]] (tableau d'octets), tailles
- * parents patchées. Partagé par buildMp4 (faststart) et buildMp4Tail (queue). */
-function buildMoov(height, v) {
+ * parents patchées. Partagé par buildMp4 (faststart) et buildMp4Tail (queue).
+ * width optionnel : crops scope (1920×800, 1280×536) — défaut 16:9. */
+function buildMoov(height, v, width) {
     const bytes = [];
     const u32 = n => bytes.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
     const u16 = n => bytes.push((n >>> 8) & 0xff, n & 0xff);
@@ -33,7 +34,7 @@ function buildMoov(height, v) {
     u32(0); u32(0); // reserved[2] (u32 x2)
     u16(0); u16(0); u16(0x0100); u16(0); // layer, alternate_group, volume, reserved
     for (let i = 0; i < 36; i++) bytes.push(0); // matrix
-    const w16x9 = Math.floor((height * 16) / 9); // 1080→1920, 2160→3840, 720→1280
+    const w16x9 = width || Math.floor((height * 16) / 9); // défaut : 1080→1920, 2160→3840, 720→1280
     u32(w16x9 * 65536); u32(height * 65536); // width, height (16.16)
     // patch tailles parentes (trak, moov)
     const tkhdEnd = bytes.length;
@@ -54,7 +55,7 @@ export function buildMp4(height, opts = {}) {
     const ascii = s => { for (const c of s) bytes.push(c.charCodeAt(0)); };
     // ftyp (20 o : size+type+major brand+minor version+compatible brands)
     u32(20); ascii('ftyp'); ascii('isom'); u32(0x200); ascii('isom');
-    for (const b of buildMoov(height, v)) bytes.push(b);
+    for (const b of buildMoov(height, v, opts.width)) bytes.push(b);
     // mdat
     bytes.push(0, 0, 0, 24); ascii('mdat'); for (let i = 0; i < 16; i++) bytes.push(0xff);
     return new Uint8Array(bytes);
@@ -85,6 +86,6 @@ export function buildMp4Tail(height, opts = {}) {
     // Queue partielle de la boîte précédente (le mdat) : 97 octets neutres —
     // taille volontairement NON multiple de 8 et sans 'tkhd' embarqué.
     for (let i = 0; i < 97; i++) bytes.push(i === 0 ? 0x00 : (i * 53 + 7) & 0xff);
-    for (const b of buildMoov(height, v)) bytes.push(b);
+    for (const b of buildMoov(height, v, opts.width)) bytes.push(b);
     return new Uint8Array(bytes);
 }

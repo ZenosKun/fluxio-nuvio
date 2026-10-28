@@ -38,7 +38,7 @@
 
 import { fetchText, fetchBytes, fetchStatus, resolveUrl } from '../utils/http.js';
 import { qualityFromUrl, resolutionLabel } from './stream.js';
-import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml } from '../utils/mp4.js';
+import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, standardHeight } from '../utils/mp4.js';
 
 const PROBE_MS = 4000;
 const PROBE_MAX = 10;
@@ -114,6 +114,8 @@ async function mp4TailQuality(st, headers, left) {
 }
 
 /** Meilleure résolution annoncée par une playlist maître HLS → « 1080p », « 4K »…
+ *  Bucket standard par largeur (v3.1.12) : une variante 1920×800 (crop scope)
+ *  vaut « 1080p » comme chez le lecteur — la hauteur seule donnait « 800p ».
  *  Une playlist média (sans #EXT-X-STREAM-INF) ne annonce pas de RESOLUTION
  *  multi-variantes : on ignore alors (chaîne vide). */
 export function bestHlsQuality(text) {
@@ -122,8 +124,8 @@ export function bestHlsQuality(text) {
     let m;
     const t = String(text || '');
     while ((m = re.exec(t)) !== null) {
-        const h = parseInt(m[2], 10);
-        if (h > best) best = h;
+        const tier = standardHeight(parseInt(m[1], 10), parseInt(m[2], 10));
+        if (tier > best) best = tier;
     }
     return best ? resolutionLabel(best) : '';
 }

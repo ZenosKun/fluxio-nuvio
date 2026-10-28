@@ -28,8 +28,15 @@
  * un mdat, la séquence d'octets 'tkhd' peut apparaître PAR HASARD (hauteur
  * 1359 « lue » alors que le lecteur affiche 1280×720 ; 1359 passait les
  * bornes brutes 96-8192). Le scan n'accepte plus qu'une hauteur STANDARD
- * ± 8 px (arrondi/crop) ET une largeur cohérente (ratio w/h 1,2-3,2) — un
- * leurre géométriquement absurde ne fait plus de libellé fantaisiste.
+ * ± 8 px (arrondi/crop) OU un crop cinémascope cohérent, ET une largeur
+ * plausible (ratio w/h 1,2-3,2) — un leurre géométriquement absurde ne fait
+ * plus de libellé fantaisiste.
+ *
+ * v3.1.12 complément 2 (retour utilisateur) : les CROPS SCOPE étaient
+ * étiquetés par leur hauteur brute (« 800p ») alors que le lecteur affiche
+ * « 1920 × 800 (1080p) » — cinémascope 2,40:1 taillé dans un master 1080p.
+ * standardHeight() reclassifie comme les lecteurs et le nommage P2P : la
+ * LARGEUR décide (1920×800 → 1080p, 1280×536 → 720p, 3840×1608 → 4K).
  */
 
 /** Hauteurs vidéo standard (anti faux positifs du scan, v3.1.12) : une
@@ -44,14 +51,41 @@ function isPlausibleHeight(h) {
     return false;
 }
 
+/** Hauteur du BUCKET standard affiché pour un couple annoncé (v3.1.12) :
+ * les lecteurs (panel « 1920 × 800 (1080p) ») et le nommage P2P classent
+ * un crop cinémascope par sa LARGEUR — 1920×800 est un 1080p scope,
+ * 1280×536 un 720p scope, 3840×1608 un 4K scope. La hauteur seule donnait
+ * « 800p » (bug utilisateur). Portrait (h > w) et SD : hauteur brute
+ * (720×576 → « 576p », pas de bucket SD fiabilisable par largeur). */
+export function standardHeight(w, h) {
+    w = Math.round(w); h = Math.round(h);
+    if (h > w) return h; // portrait (vidéo téléphone…) : pas de reclassification
+    if (w >= 3400 || h >= 2000) return 2160;
+    if (w >= 2300 || h >= 1300) return 1440;
+    if (w >= 1700 || h >= 1000) return 1080;
+    if (w >= 1100 || h >= 700) return 720;
+    return h;
+}
+
+/** Géométrie plausible d'un candidat tkhd du scan (anti faux positifs) :
+ * largeur cohérente (w > 0, ratio w/h 1,2-3,2 — 4:3 1,33, 16:9 1,78, scope
+ * 2,39 et 1920×720 2,67 passent ; w=0, portrait/square ou ratio absurde
+ * non — bornes plus larges que le 1,2-2,5 initial proposé : un vrai film
+ * 1920×720 serait sinon rejeté, régression cinéma scope) ET hauteur
+ * standard ± 8 px OU crop cinémascope d'un bucket (ratio cinéma ≥ 1,8 —
+ * 1,85, 2,20, 2,35, 2,39 — et hauteur dans la fourchette des crops réels :
+ * 1920×800, 1280×536, 3840×1608…). */
+function isPlausibleGeometry(w, h) {
+    if (!(w > 0) || w / h < 1.2 || w / h > 3.2) return false;
+    if (isPlausibleHeight(h)) return true;
+    return w / h >= 1.8 && h >= 500 && h <= 1720;
+}
+
 /** Scan par signature des tkhd (v3.1.12) : retrouve la hauteur dans un chunk
  * non aligné (queue de fichier). Chaque candidat 'tkhd' n'est accepté que si
- * sa boîte déclarée est plausible et entièrement contenue dans le buffer,
- * que sa hauteur est STANDARD ± 8 px et que sa largeur est cohérente
- * (ratio w/h 1,2-3,2 : 4:3 1,33, 16:9 1,78, scope 2,39 et 1920×720 2,67
- * passent ; w=0, portrait/square ou ratio absurde non). Bornes plus larges
- * que le 1,2-2,5 initial proposé : un vrai film 1920×720 (2,67) serait
- * sinon rejeté — régression pour le cinéma scope. */
+ * sa boîte déclarée est plausible et entièrement contenue dans le buffer et
+ * que sa géométrie est crédible (isPlausibleGeometry) ; le meilleur candidat
+ * est reclassifié dans le bucket standard par largeur (standardHeight). */
 function scanTkhd(u8, dv) {
     let best = 0;
     for (let i = 4; i + 12 <= u8.length; i++) {
@@ -62,14 +96,18 @@ function scanTkhd(u8, dv) {
         const h = Math.round(dv.getUint32(i - 4 + size - 4) / 65536);
         const w = Math.round(dv.getUint32(i - 4 + size - 8) / 65536);
         // Anti faux positifs (retour utilisateur : 1359 lu dans du mdat,
-        // lecteur = 1280×720) : hauteur standard ± 8 px ET largeur cohérente.
-        if (h >= 96 && h <= 8192 && isPlausibleHeight(h) && w > 0 &&
-            w / h >= 1.2 && w / h <= 3.2 && h > best) best = h;
+        // lecteur = 1280×720) : géométrie crédible (hauteur standard ± 8
+        // px OU crop scope cohérent, largeur plausible) puis bucket standard.
+        if (h >= 96 && h <= 8192 && isPlausibleGeometry(w, h)) {
+            const tier = standardHeight(w, h);
+            if (tier > best) best = tier;
+        }
     }
     return best;
 }
 
-/** Hauteur vidéo max annoncée par les tkhd d'un buffer MP4 (0 = inconnu).
+/** Hauteur vidéo max annoncée par les tkhd d'un buffer MP4 (0 = inconnu),
+ * reclassifiée dans le bucket standard par largeur (1920×800 → 1080).
  * 1. parcours strict des boîtes depuis l'offset 0 (chunk de tête aligné) ;
  * 2. sinon scan par signature (chunk de queue non aligné, v3.1.12). */
 export function mp4MaxHeight(u8) {
@@ -111,10 +149,13 @@ export function mp4MaxHeight(u8) {
                 // tkhd v0 = 84 o au total, v1 = 96 o — width/height sont les
                 // 8 DERNIERS octets dans les deux versions (les champs à
                 // taille variable, dates étendues v1, précèdent la matrice).
+                // Bucket standard (v3.1.12) : 1920×800 (crop scope) → 1080,
+                // comme le panel du lecteur — la hauteur seule donnait 800.
                 if (size >= 84 && endBox <= end) {
                     const w = dv.getUint32(endBox - 8) / 65536;
                     const h = dv.getUint32(endBox - 4) / 65536;
-                    if (h > best) best = h;
+                    const tier = standardHeight(w, h);
+                    if (tier > best) best = tier;
                 }
             }
             o += size;

@@ -1,6 +1,6 @@
 /**
  * Fluxio v3.1.12 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T18:38:57.948Z
+ * Built: 2026-10-28T19:11:59.730Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -569,6 +569,21 @@ var __provider = (() => {
     }
     return false;
   }
+  function standardHeight(w, h) {
+    w = Math.round(w);
+    h = Math.round(h);
+    if (h > w) return h;
+    if (w >= 3400 || h >= 2e3) return 2160;
+    if (w >= 2300 || h >= 1300) return 1440;
+    if (w >= 1700 || h >= 1e3) return 1080;
+    if (w >= 1100 || h >= 700) return 720;
+    return h;
+  }
+  function isPlausibleGeometry(w, h) {
+    if (!(w > 0) || w / h < 1.2 || w / h > 3.2) return false;
+    if (isPlausibleHeight(h)) return true;
+    return w / h >= 1.8 && h >= 500 && h <= 1720;
+  }
   function scanTkhd(u8, dv) {
     let best = 0;
     for (let i = 4; i + 12 <= u8.length; i++) {
@@ -578,7 +593,10 @@ var __provider = (() => {
       if (size < 92 || size > 208 || i - 4 + size > u8.length) continue;
       const h = Math.round(dv.getUint32(i - 4 + size - 4) / 65536);
       const w = Math.round(dv.getUint32(i - 4 + size - 8) / 65536);
-      if (h >= 96 && h <= 8192 && isPlausibleHeight(h) && w > 0 && w / h >= 1.2 && w / h <= 3.2 && h > best) best = h;
+      if (h >= 96 && h <= 8192 && isPlausibleGeometry(w, h)) {
+        const tier = standardHeight(w, h);
+        if (tier > best) best = tier;
+      }
     }
     return best;
   }
@@ -621,7 +639,8 @@ var __provider = (() => {
           if (size >= 84 && endBox <= end) {
             const w = dv.getUint32(endBox - 8) / 65536;
             const h2 = dv.getUint32(endBox - 4) / 65536;
-            if (h2 > best) best = h2;
+            const tier = standardHeight(w, h2);
+            if (tier > best) best = tier;
           }
         }
         o += size;
@@ -703,8 +722,8 @@ var __provider = (() => {
     let m;
     const t = String(text || "");
     while ((m = re.exec(t)) !== null) {
-      const h = parseInt(m[2], 10);
-      if (h > best) best = h;
+      const tier = standardHeight(parseInt(m[1], 10), parseInt(m[2], 10));
+      if (tier > best) best = tier;
     }
     return best ? resolutionLabel(best) : "";
   }
