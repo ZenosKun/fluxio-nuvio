@@ -20,6 +20,9 @@
  * - Qualité réelle (v3.1.8) : la RESOLUTION max de la playlist maître HLS
  *   (« 1080p », « 4K »…) ou le motif de l'URL MP4 remplace les libellés
  *   génériques (« Direct », « Auto (HLS) ») — Nuvio affiche ce champ tel quel.
+ *   v3.1.12 : si la tête ne donne rien (moov en FIN de fichier — non
+ *   faststart, surtout 4K HEVC), sonde de QUEUE par suffix range (256 Ko
+ *   puis 1 Mo) : le lecteur voyait 3840×2160 là où on affichait « Direct ».
  * - Redirections détectées : toute réponse HTML là où on attend un flux
  *   (playlist, variante, MP4) est un échec (ex. proxy → page captcha).
  * - Les en-têtes du flux (Referer, User-Agent…) sont envoyés tels quels.
@@ -43,11 +46,17 @@ const PROBE_BUDGET_MS = 8000;
 const MIN_REMAINING_MS = 1500;
 const DEEP_MAX = 8; // sonde approfondie (segment) : 8 premiers liens
 const SEGMENT_RANGE = 'bytes=0-16383';
-/** Plage lue pour l'en-tête MP4 (moov/tkhd) : 128 Ko couvrent le moov des
- * fichiers faststart (ftyp + moov avant mdat). Au-delà (moov en fin de
- * fichier) : inatteignable avec un Range tête seule → pas de libellé, aucun
- * coût supplémentaire. */
+/** Plages lues pour la qualité MP4 (moov/tkhd) :
+ *  - TÊTE 128 Ko : moov des fichiers faststart (ftyp + moov avant mdat) ;
+ *  - QUEUE 256 Ko puis 1 Mo (v3.1.12) : moov des fichiers NON faststart —
+ *    surtout 4K HEVC — où le moov est en fin de fichier. Escalade car le
+ *    moov d'un long métrage (tables stsz/stco) dépasse souvent 256 Ko, et le
+ *    tkhd vit au DÉBUT du moov : le chunk doit remonter jusqu'à son début.
+ *  Borné : 2 requêtes max, timeout 2,5 s chacune, jamais au-delà du temps
+ *  restant de la sonde ; un serveur qui ignore le Range (200) est parsé tel
+ *  quel sans escalade (le corps est déjà le fichier entier). */
 const MOOV_RANGE = 'bytes=0-131071';
+const MOOV_TAIL_RANGES = ['bytes=-262144', 'bytes=-1048576'];
 const MOOV_MS = 2500;
 
 /**
@@ -71,6 +80,37 @@ async function mp4HeadQuality(st, headers, left) {
     } catch (e) {
         return ''; // goûtage impossible : qualité inconnue, le lien reste « ? »/OK
     }
+}
+
+/**
+ * Sonde de QUEUE (v3.1.12) : moov en fin de fichier (non faststart — surtout
+ * 4K HEVC, cf. retour utilisateur : fastflux webflix affiché « Direct » alors
+ * que le lecteur montre 3840×2160 HEVC). Suffix range 256 Ko puis 1 Mo —
+ * mp4MaxHeight retrouve le tkhd par signature même si le chunk démarre au
+ * milieu d'une boîte. Un serveur qui ignore le Range (200 au lieu de 206)
+ * envoie le fichier ENTIER : on le parse tel quel et on n'escalade pas (un
+ * second suffix range donnerait le même corps). HTML réel → '' (média
+ * mensonger, déjà tranché par le chemin « content-type »). Échec silencieux
+ * → '' (on n'invente rien).
+ */
+async function mp4TailQuality(st, headers, left) {
+    for (let i = 0; i < MOOV_TAIL_RANGES.length; i++) {
+        try {
+            const res = await fetchBytes(st.url, {
+                method: 'GET',
+                headers: Object.assign({}, headers, { Range: MOOV_TAIL_RANGES[i], Accept: '*/*' }),
+                timeout: Math.min(MOOV_MS, left()),
+            });
+            const u8 = res.bytes;
+            if (!u8 || !u8.length || bytesLookHtml(u8)) return '';
+            const q = mp4QualityLabel(mp4MaxHeight(u8));
+            if (q) return q;
+            if (res.status === 200) return ''; // Range ignoré : corps = fichier entier
+        } catch (e) {
+            return ''; // goûtage impossible : qualité inconnue, le lien reste OK
+        }
+    }
+    return '';
 }
 
 /** Meilleure résolution annoncée par une playlist maître HLS → « 1080p », « 4K »…
@@ -154,6 +194,7 @@ export async function probeOne(st, timeout, deep) {
                     // non exigée : certains conteneurs démarrent autrement).
                     let q = qualityFromUrl(res.finalUrl || st.url);
                     if (!q) q = mp4QualityLabel(mp4MaxHeight(u8));
+                    if (!q) q = await mp4TailQuality(st, headers, left); // moov en fin de fichier
                     return { ok: true, quality: q, why: 'content-type mensonger, média confirmé' };
                 } catch (err2) {
                     if (neutralErr(err2)) return { ok: null, why: 'sonde interrompue' };
@@ -163,6 +204,7 @@ export async function probeOne(st, timeout, deep) {
             // v3.1.10 : qualité réelle du MP4 quand l'URL n'en dit rien.
             let q = qualityFromUrl(res.finalUrl || st.url);
             if (!q) q = await mp4HeadQuality(st, headers, left);
+            if (!q) q = await mp4TailQuality(st, headers, left); // v3.1.12 : moov en fin de fichier
             return { ok: true, quality: q };
         } catch (err) {
             const status = statusOf(err);

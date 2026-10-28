@@ -107,7 +107,7 @@ La régression d'un parseur se fait **offline en secondes** contre `tests/fixtur
 
 - Les hosts gratuits (uqload, vidzy…) restent périssables ; l'anti-blocage garantit que leurs lenteurs ne te bloquent pas.
 - v3.1.9 — certains CDN servent le vrai média avec un content-type mensonger (`text/html`, ex. fastflux/zen-blk.store) : la sonde goûte les premiers octets avant de déclarer un lien mort — plus de fausses morts sur ces CDN.
-- v3.1.10 — la qualité affichée des MP4 directs sans motif dans l'URL (fastflux…) est lue dans le `moov/tkhd` du conteneur (GET Range 128 Ko) : « Direct » devient « 1080p »/« 4K ». Un moov en fin de fichier (rare) reste sans libellé.
+- v3.1.10 + v3.1.12 — la qualité affichée des MP4 directs sans motif dans l'URL (fastflux…) est lue dans le `moov/tkhd` du conteneur : tête en GET Range 128 Ko (faststart), puis **sonde de queue** par suffix range 256 Ko → 1 Mo quand le moov est en FIN de fichier (non faststart, surtout 4K HEVC — le lecteur voyait 3840×2160 là où on affichait « Direct ») ; `mp4MaxHeight` retrouve le tkhd par signature même dans un chunk non aligné. Échec silencieux → pas de libellé (on n'invente rien).
 - v3.1.10 — la langue de BFlix est déduite des pistes audio du master HLS, sinon de la langue originale TMDB : un titre français original (Lupin…) est étiqueté VF et sert aussi en VF exclusive. L'audio d'un dub français en piste secondaire n'est pas garanti côté lecteur.
 - Vidzy exige une empreinte TLS navigateur : dépriorisé en fin de chaîne d'hôtes.
 - Un contenu absent de TMDB ne peut pas être cherché (choix d'architecture : échec propre plutôt que faux match).

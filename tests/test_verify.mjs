@@ -1,7 +1,7 @@
 // Tests offline de la vérification de liens et du nom affiché.
 import { verifyStreams, probeOne, nextHlsUri } from '../src/core/verify.js';
 import { finalizeStreams, makeStream } from '../src/core/stream.js';
-import { buildMp4 } from './helpers_mp4.mjs';
+import { buildMp4, buildMp4HeadJunk, buildMp4Tail } from './helpers_mp4.mjs';
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : ' → ' + d)); };
 const calls = [];
@@ -48,6 +48,32 @@ globalThis.fetch = async (url, o = {}) => {
   if (url.includes('lyinghtml.mp4')) {
     if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
     return { status: 200, url, headers: h('text/html'), text: async () => '<html>captcha</html>' };
+  }
+  // v3.1.12 — sonde de QUEUE : MP4 non faststart (moov en FIN de fichier —
+  // bug utilisateur : fastflux 4K HEVC affiché « Direct » alors que le
+  // lecteur montre 3840×2160). Le serveur répond selon le Range demandé :
+  // tête → ftyp+mdat sans moov ; suffix range → moov complet.
+  const respBytes = (status, ct, b) => ({ status, url, headers: h(ct), arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), text: async () => '' });
+  if (url.includes('tail4k.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('video/mp4'), text: async () => '' };
+    const rg = String((o.headers || {}).Range || '');
+    if (rg === 'bytes=-262144') return respBytes(206, 'video/mp4', buildMp4Tail(2160, { version: 0 }));
+    return respBytes(206, 'video/mp4', buildMp4HeadJunk());
+  }
+  if (url.includes('tailbig.mp4')) {
+    // moov > 256 Ko : le 1er suffix range ne contient pas de tkhd → escalade 1 Mo.
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('video/mp4'), text: async () => '' };
+    const rg = String((o.headers || {}).Range || '');
+    if (rg === 'bytes=-262144') return respBytes(206, 'video/mp4', new Uint8Array(4096));
+    if (rg === 'bytes=-1048576') return respBytes(206, 'video/mp4', buildMp4Tail(1080, { version: 1 }));
+    return respBytes(206, 'video/mp4', buildMp4HeadJunk());
+  }
+  if (url.includes('flxtail.mp4')) {
+    // fastflux : content-type mensonger ET moov en fin de fichier (combo réel).
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
+    const rg = String((o.headers || {}).Range || '');
+    if (rg === 'bytes=-262144') return respBytes(206, 'text/html', buildMp4Tail(2160, { version: 0 }));
+    return respBytes(206, 'text/html', buildMp4HeadJunk());
   }
   return { status: 200, url, text: async () => '' };
 };
@@ -138,6 +164,22 @@ ok('verify conserve le tri weak, ⚠ non doublé', outWeak[1].url.includes('w2.e
   ok('CDN mensonger + HTML réel → toujours KO (octets)', r3.ok === false, JSON.stringify(r3));
   const q4 = await verifyStreams(finalizeStreams([mk('W · Lupin · MP4 · VF', 'https://t.example/bare4k.mp4', 'webflix')], cfg), { remainingMs: 20000 });
   ok('verifyStreams propage la qualité moov dans la liste Nuvio', q4.length === 1 && q4[0].quality === '4K', JSON.stringify(q4.map(s => s.quality)));
+}
+
+// v3.1.12 — sonde de queue : moov en fin de fichier (non faststart, surtout
+// 4K HEVC — cf. retour utilisateur : fastflux webflix « Direct » alors que
+// le lecteur affiche 3840×2160).
+{
+  const r1 = await probeOne({ url: 'https://h.example/tail4k.mp4', headers: {} }, 4000, false);
+  ok('MP4 non faststart : sonde de QUEUE (suffix range) → « 4K »', r1.ok === true && r1.quality === '4K', JSON.stringify(r1));
+  const tailRanges = calls.filter(c => c[1].includes('tail4k.mp4') && c[0] === 'GET').map(c => c[2].Range);
+  ok('queue sondée en suffix range -262144 après échec tête 128 Ko', tailRanges.indexOf('bytes=-262144') !== -1, JSON.stringify(tailRanges));
+  const r2 = await probeOne({ url: 'https://h.example/tailbig.mp4', headers: {} }, 4000, false);
+  ok('moov > 256 Ko : escalade suffix range -1048576 → « 1080p »', r2.ok === true && r2.quality === '1080p', JSON.stringify(r2));
+  const r3 = await probeOne({ url: 'https://h.example/flxtail.mp4', headers: {} }, 4000, false);
+  ok('fastflux mensonger + moov final → conservé + « 4K » (combo réel)', r3.ok === true && r3.quality === '4K', JSON.stringify(r3));
+  const q5 = await verifyStreams(finalizeStreams([mk('W · Discovery 4K · MP4 · VF', 'https://t.example/tail4k.mp4', 'webflix')], cfg), { remainingMs: 20000 });
+  ok('verifyStreams propage la qualité de la sonde de queue', q5.length === 1 && q5[0].quality === '4K', JSON.stringify(q5.map(s => s.quality)));
 }
 console.log(`\nRésultat : ${pass} OK, ${fail} échec(s)`);
 process.exit(fail ? 1 : 0);

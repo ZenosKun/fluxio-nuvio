@@ -494,7 +494,7 @@ t('TEST_STREAMS : 2 flux publics, MP4 sur test-videos.co.uk (l URL google répon
 
 /* ── v3.1.10 : qualité réelle MP4 via moov/tkhd ─────────────────────────── */
 import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, looksMp4 } from '../src/utils/mp4.js';
-import { buildMp4 } from './helpers_mp4.mjs';
+import { buildMp4, buildMp4HeadJunk, buildMp4Tail } from './helpers_mp4.mjs';
 
 t('mp4MaxHeight : tkhd v0 → 1080 (MP4 synthétique faststart)', () => {
     const u8 = buildMp4(1080, { version: 0 });
@@ -518,6 +518,37 @@ t('mp4QualityLabel : bornes 2000 → 4K, 96 plafonné 8192', () => {
     assert.strictEqual(mp4QualityLabel(2000), '4K');
     assert.strictEqual(mp4QualityLabel(480), '480p');
     assert.strictEqual(mp4QualityLabel(0), '');
+});
+
+/* ── v3.1.12 : sonde de queue — moov en fin de fichier (non faststart) ──── */
+t('mp4MaxHeight : chunk de QUEUE non aligné, tkhd v0 2160 → 4K (scan signature)', () => {
+    // Le chunk démarre au milieu du mdat (97 octets non alignés) : le parcours
+    // strict des boîtes échoue, seul le scan retrouve le tkhd du moov final.
+    const tail = buildMp4Tail(2160, { version: 0 });
+    assert.strictEqual(looksMp4(tail), false); // pas de ftyp en tête (chunk de queue)
+    assert.strictEqual(mp4MaxHeight(tail), 2160);
+    assert.strictEqual(mp4QualityLabel(2160), '4K');
+});
+t('mp4MaxHeight : chunk de QUEUE, tkhd v1 1080 → 1080p', () => {
+    assert.strictEqual(mp4MaxHeight(buildMp4Tail(1080, { version: 1 })), 1080);
+});
+t('mp4MaxHeight : tête de MP4 NON faststart (ftyp+mdat sans moov) → 0', () => {
+    // Cas du bug utilisateur : la sonde tête seule ne voit rien (moov en fin).
+    const head = buildMp4HeadJunk();
+    assert.strictEqual(looksMp4(head), true);
+    assert.strictEqual(mp4MaxHeight(head), 0);
+});
+t('mp4MaxHeight : binaire sans aucun tkhd → 0 (pas de faux positif du scan)', () => {
+    const junk = new Uint8Array(4096).fill(0x5a);
+    assert.strictEqual(mp4MaxHeight(junk), 0);
+});
+t('mp4MaxHeight : candidat tkhd farci dans du mdat mais boîte farfelue → rejeté', () => {
+    // 'tkhd' présent mais taille déclarée absurde (4000 o) : le scan refuse.
+    const b = [0, 0, 0, 0];
+    const put32 = (n) => b.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+    put32(4000); for (const c of 'tkhd') b.push(c.charCodeAt(0)); b.push(0); // v0
+    for (let i = 0; i < 200; i++) b.push(0x41);
+    assert.strictEqual(mp4MaxHeight(new Uint8Array(b)), 0);
 });
 
 /* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */

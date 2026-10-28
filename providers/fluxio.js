@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.11 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T17:44:22.393Z
+ * Fluxio v3.1.12 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T18:18:36.257Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -563,6 +563,18 @@ var __provider = (() => {
   });
 
   // src/utils/mp4.js
+  function scanTkhd(u8, dv) {
+    let best = 0;
+    for (let i = 4; i + 12 <= u8.length; i++) {
+      if (u8[i] !== 116 || u8[i + 1] !== 107 || u8[i + 2] !== 104 || u8[i + 3] !== 100) continue;
+      if (u8[i + 4] > 1) continue;
+      const size = dv.getUint32(i - 4);
+      if (size < 92 || size > 208 || i - 4 + size > u8.length) continue;
+      const h = Math.round(dv.getUint32(i - 4 + size - 4) / 65536);
+      if (h >= 96 && h <= 8192 && h > best) best = h;
+    }
+    return best;
+  }
   function mp4MaxHeight(u8) {
     if (!u8 || u8.length < 16) return 0;
     let dv;
@@ -609,6 +621,12 @@ var __provider = (() => {
       }
     };
     walk(0, u8.length, 0);
+    if (best === 0) {
+      try {
+        best = scanTkhd(u8, dv);
+      } catch (e) {
+      }
+    }
     const h = Math.round(best);
     return h >= 96 && h <= 8192 ? h : 0;
   }
@@ -647,6 +665,27 @@ var __provider = (() => {
       } catch (e) {
         return "";
       }
+    });
+  }
+  function mp4TailQuality(st, headers, left) {
+    return __async(this, null, function* () {
+      for (let i = 0; i < MOOV_TAIL_RANGES.length; i++) {
+        try {
+          const res = yield fetchBytes(st.url, {
+            method: "GET",
+            headers: Object.assign({}, headers, { Range: MOOV_TAIL_RANGES[i], Accept: "*/*" }),
+            timeout: Math.min(MOOV_MS, left())
+          });
+          const u8 = res.bytes;
+          if (!u8 || !u8.length || bytesLookHtml(u8)) return "";
+          const q = mp4QualityLabel(mp4MaxHeight(u8));
+          if (q) return q;
+          if (res.status === 200) return "";
+        } catch (e) {
+          return "";
+        }
+      }
+      return "";
     });
   }
   function bestHlsQuality(text) {
@@ -704,6 +743,7 @@ var __provider = (() => {
               if (bytesLookHtml(u8)) return { ok: false, why: "corps HTML (content-type mensonger)" };
               let q2 = qualityFromUrl(res2.finalUrl || st.url);
               if (!q2) q2 = mp4QualityLabel(mp4MaxHeight(u8));
+              if (!q2) q2 = yield mp4TailQuality(st, headers, left);
               return { ok: true, quality: q2, why: "content-type mensonger, m\xE9dia confirm\xE9" };
             } catch (err2) {
               if (neutralErr(err2)) return { ok: null, why: "sonde interrompue" };
@@ -712,6 +752,7 @@ var __provider = (() => {
           }
           let q = qualityFromUrl(res2.finalUrl || st.url);
           if (!q) q = yield mp4HeadQuality(st, headers, left);
+          if (!q) q = yield mp4TailQuality(st, headers, left);
           return { ok: true, quality: q };
         } catch (err) {
           const status = statusOf(err);
@@ -814,7 +855,7 @@ var __provider = (() => {
       return good;
     });
   }
-  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE, MOOV_RANGE, MOOV_MS;
+  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE, MOOV_RANGE, MOOV_TAIL_RANGES, MOOV_MS;
   var init_verify = __esm({
     "src/core/verify.js"() {
       init_http();
@@ -827,6 +868,7 @@ var __provider = (() => {
       DEEP_MAX = 8;
       SEGMENT_RANGE = "bytes=0-16383";
       MOOV_RANGE = "bytes=0-131071";
+      MOOV_TAIL_RANGES = ["bytes=-262144", "bytes=-1048576"];
       MOOV_MS = 2500;
     }
   });

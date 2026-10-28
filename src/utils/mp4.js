@@ -14,11 +14,36 @@
  * précèdent). Seule la piste vidéo a une hauteur non nulle ; on prend la max.
  *
  * Usage sonde : GET Range bytes=0-131071 (128 Ko). Les MP4 « streaming »
- * (faststart) placent le moov en tête — derrière ftyp, avant mdat. Un moov
- * en fin de fichier est hors d'atteinte (Range tête seule) → 0, aucun coût.
+ * (faststart) placent le moov en tête — derrière ftyp, avant mdat.
+ *
+ * v3.1.12 — moov en FIN de fichier (non faststart, surtout 4K HEVC) : le
+ * lecteur affiche 3840×2160 mais la sonde tête seule répond « Direct ». Un
+ * suffix range (derniers octets) ramène un chunk qui démarre au MILIEU d'une
+ * boîte (mdat) : le parcours strict y échoue. mp4MaxHeight ajoute donc un
+ * scan par signature des 'tkhd' sur tout le buffer — sans hypothèse
+ * d'alignement — avec garde-fous anti-faux positifs (taille de boîte
+ * plausible 92-208 o, version 0-1, hauteur vidéo plausible 96-8192).
  */
 
-/** Hauteur vidéo max annoncée par les tkhd d'un buffer MP4 (0 = inconnu). */
+/** Scan par signature des tkhd (v3.1.12) : retrouve la hauteur dans un chunk
+ * non aligné (queue de fichier). Chaque candidat 'tkhd' n'est accepté que si
+ * sa boîte déclarée est plausible et entièrement contenue dans le buffer. */
+function scanTkhd(u8, dv) {
+    let best = 0;
+    for (let i = 4; i + 12 <= u8.length; i++) {
+        if (u8[i] !== 0x74 || u8[i + 1] !== 0x6b || u8[i + 2] !== 0x68 || u8[i + 3] !== 0x64) continue; // 'tkhd'
+        if (u8[i + 4] > 1) continue; // version 0 ou 1
+        const size = dv.getUint32(i - 4);
+        if (size < 92 || size > 208 || i - 4 + size > u8.length) continue;
+        const h = Math.round(dv.getUint32(i - 4 + size - 4) / 65536);
+        if (h >= 96 && h <= 8192 && h > best) best = h;
+    }
+    return best;
+}
+
+/** Hauteur vidéo max annoncée par les tkhd d'un buffer MP4 (0 = inconnu).
+ * 1. parcours strict des boîtes depuis l'offset 0 (chunk de tête aligné) ;
+ * 2. sinon scan par signature (chunk de queue non aligné, v3.1.12). */
 export function mp4MaxHeight(u8) {
     if (!u8 || u8.length < 16) return 0;
     let dv;
@@ -68,6 +93,16 @@ export function mp4MaxHeight(u8) {
         }
     };
     walk(0, u8.length, 0);
+
+    if (best === 0) {
+        // Chunk non aligné (queue de fichier, moov final) : le parcours strict
+        // échoue dès l'offset 0 (milieu d'une boîte) — scan par signature.
+        try {
+            best = scanTkhd(u8, dv);
+        } catch (e) {
+            /* buffer capricieux : on n'invente rien */
+        }
+    }
 
     const h = Math.round(best);
     // Sanité : une hauteur plausible de vidéo (pas un float résiduel du
