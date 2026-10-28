@@ -138,11 +138,12 @@ async function resolveVidzyFamily(embedUrl, opts, variant) {
         referer: playRef,
         ua: BROWSER_UA,
         subtitles: extractSubtitles(res.text, res.finalUrl),
-        // Famille vidzy entière (vidzy, luluvid, premium) : segments refusés
-        // au player natif (TLS Chrome + gk=) même quand la playlist passe —
-        // stream.js rangera ces flux en dernier ⚠ (luluvid inclus, buffering
-        // infini confirmé par l'utilisateur).
-        weakPlayer: variant === 'vidzy' || variant === 'luluvid' || variant === 'premium',
+        // Famille vidzy (TLS Chrome + gk=) : segments refusés au player
+        // natif même quand la playlist passe — stream.js range ces flux en
+        // dernier ⚠. variant n'est ici que 'vidzy' ou 'premium' (RESOLVERS) ;
+        // luluvid a son propre résolveur resolveLuluvid, qui renvoie aussi
+        // weakPlayer: true (buffering infini confirmé par l'utilisateur).
+        weakPlayer: true,
     };
 }
 
@@ -253,7 +254,13 @@ async function resolveLuluvid(embedUrl, opts) {
         if (/tnmr\.org/i.test(m[1]) && !/cdn-tnmr\.org/i.test(m[1])) {
             throw new Error('CDN tnmr.org : 403 vérifié en live (gowaru) — flux non jouable, rejet');
         }
-        return { url: m[1], referer: 'https://luluvdo.com/', ua: BROWSER_UA };
+        // Famille vidzy (même infra TLS Chrome + gk=) : même quand la
+        // playlist passe, les segments peuvent refuser le lecteur natif →
+        // weakPlayer, stream.js range ces flux en dernier ⚠. (Correction
+        // audit v3.1.8 : resolveLuluvid n'était PAS flaggé — la condition
+        // variant === 'luluvid' de resolveVidzyFamily était du code mort,
+        // RESOLVERS ne l'appelle qu'en 'vidzy'/'premium'.)
+        return { url: m[1], referer: 'https://luluvdo.com/', ua: BROWSER_UA, weakPlayer: true };
     }
     throw new Error('luluvid irresolvable (' + lastError + ')');
 }

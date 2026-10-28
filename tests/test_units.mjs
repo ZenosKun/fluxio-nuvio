@@ -7,7 +7,7 @@
 import assert from 'node:assert';
 import { buildPlan, kindOf, affinityOf } from '../src/core/plan.js';
 import { createStopper, raceEarlyExit, makeSourceShouldStop } from '../src/core/stopper.js';
-import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, resolutionLabel } from '../src/core/stream.js';
+import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, resolutionLabel, TEST_STREAMS } from '../src/core/stream.js';
 import { bestHlsQuality } from '../src/core/verify.js';
 import { readConfig } from '../src/utils/settings.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
@@ -406,6 +406,16 @@ t('bestHlsQuality : RESOLUTION max de la playlist maître', () => {
     assert.strictEqual(bestHlsQuality(master), '4K');
     assert.strictEqual(bestHlsQuality('#EXTM3U\n#EXTINF:4.0,\nseg1.ts\n'), '');
     assert.strictEqual(bestHlsQuality(''), '');
+});
+
+/* ── v3.1.8 : garde-fou flux TEST (l'URL a pivoté 3 fois dans l'historique) ── */
+t('TEST_STREAMS : 2 flux publics, MP4 sur test-videos.co.uk (l URL google répond 403)', () => {
+    assert.strictEqual(TEST_STREAMS.length, 2);
+    assert.ok(/\.m3u8(\?|$)/.test(TEST_STREAMS[0].url), 'TEST HLS doit être un m3u8');
+    assert.ok(TEST_STREAMS[1].url.startsWith('https://test-videos.co.uk/'),
+        'TEST MP4 : le bucket GCS gtv-videos-bucket répond désormais 403 (vérifié live)');
+    assert.ok(/\.mp4(\?|$)/.test(TEST_STREAMS[1].url), 'TEST MP4 doit être un mp4');
+    assert.strictEqual(TEST_STREAMS[1].quality, 'Direct');
 });
 
 console.log(`\nRésultat : ${ok} OK, ${ko} échec(s)`);

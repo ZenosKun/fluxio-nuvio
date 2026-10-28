@@ -52,7 +52,10 @@ export function composeTitle({ site, episode, host, url, lang }) {
 /** Flux publics de test : si eux non plus ne se lisent pas, le problème est le lecteur, pas les sources. */
 export const TEST_STREAMS = [
     { name: 'Fluxio · TEST HLS (mux.dev)', title: 'Test HLS', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', quality: 'Auto (HLS)', language: 'TEST' },
-    { name: 'Fluxio · TEST MP4', title: 'Test MP4', url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4', quality: 'Direct', language: 'TEST' },
+    // Flux public de test vérifié vivant (v3.1.8 : l'URL google
+    // gtv-videos-bucket répond désormais 403 — bucket GCS restreint ;
+    // test-videos.co.uk sert 206 video/mp4 avec support Range, vérifié live).
+    { name: 'Fluxio · TEST MP4 (test-videos)', title: 'Test MP4', url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4', quality: 'Direct', language: 'TEST' },
 ];
 
 /** Nom affiché dans la liste (l'app n'affiche pas `title`) : Fluxio · source · hôte. */

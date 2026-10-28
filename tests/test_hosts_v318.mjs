@@ -98,7 +98,13 @@ globalThis.fetch = async (url) => {
     let okGood = null;
     try { okGood = await resolveEmbed('luluvid', 'https://vidhsareup.io/embed-good.html', { timeout: 3000 }); }
     catch (e) { okGood = null; }
-    t('luluvid hors tnmr.org : résolution normale', !!okGood && /\.m3u8/.test(okGood.url), okGood && okGood.url);
+    // Correction audit : resolveLuluvid DOIT renvoyer weakPlayer: true (la
+    // condition luluvid de resolveVidzyFamily était du code mort — RESOLVERS
+    // ne l'appelle qu'en vidzy/premium). Sans flag, un luluvid non-tnmr
+    // échappait à la dépriorisation.
+    t('luluvid hors tnmr.org : résolution normale + weakPlayer flaggé',
+      !!okGood && /\.m3u8/.test(okGood.url) && okGood.weakPlayer === true,
+      okGood && JSON.stringify({ url: okGood.url, weakPlayer: okGood.weakPlayer }));
 }
 
 /* ── 3+4. vidzy : leurre troll rejeté ; referer de lecture = vidzy.live ── */

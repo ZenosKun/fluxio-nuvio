@@ -1,6 +1,6 @@
 /**
  * Fluxio v3.1.8 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T11:29:51.187Z
+ * Built: 2026-10-28T11:35:15.607Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -492,7 +492,10 @@ var __provider = (() => {
       PROVIDER_NAME = "Fluxio";
       TEST_STREAMS = [
         { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
-        { name: "Fluxio \xB7 TEST MP4", title: "Test MP4", url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4", quality: "Direct", language: "TEST" }
+        // Flux public de test vérifié vivant (v3.1.8 : l'URL google
+        // gtv-videos-bucket répond désormais 403 — bucket GCS restreint ;
+        // test-videos.co.uk sert 206 video/mp4 avec support Range, vérifié live).
+        { name: "Fluxio \xB7 TEST MP4 (test-videos)", title: "Test MP4", url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4", quality: "Direct", language: "TEST" }
       ];
     }
   });
@@ -2314,11 +2317,12 @@ var __provider = (() => {
         referer: playRef,
         ua: BROWSER_UA,
         subtitles: extractSubtitles(res.text, res.finalUrl),
-        // Famille vidzy entière (vidzy, luluvid, premium) : segments refusés
-        // au player natif (TLS Chrome + gk=) même quand la playlist passe —
-        // stream.js rangera ces flux en dernier ⚠ (luluvid inclus, buffering
-        // infini confirmé par l'utilisateur).
-        weakPlayer: variant === "vidzy" || variant === "luluvid" || variant === "premium"
+        // Famille vidzy (TLS Chrome + gk=) : segments refusés au player
+        // natif même quand la playlist passe — stream.js range ces flux en
+        // dernier ⚠. variant n'est ici que 'vidzy' ou 'premium' (RESOLVERS) ;
+        // luluvid a son propre résolveur resolveLuluvid, qui renvoie aussi
+        // weakPlayer: true (buffering infini confirmé par l'utilisateur).
+        weakPlayer: true
       };
     });
   }
@@ -2417,7 +2421,7 @@ var __provider = (() => {
         if (/tnmr\.org/i.test(m[1]) && !/cdn-tnmr\.org/i.test(m[1])) {
           throw new Error("CDN tnmr.org : 403 v\xE9rifi\xE9 en live (gowaru) \u2014 flux non jouable, rejet");
         }
-        return { url: m[1], referer: "https://luluvdo.com/", ua: BROWSER_UA };
+        return { url: m[1], referer: "https://luluvdo.com/", ua: BROWSER_UA, weakPlayer: true };
       }
       throw new Error("luluvid irresolvable (" + lastError + ")");
     });
