@@ -7,8 +7,16 @@
  * avec les en-têtes de lecture (Referer/User-Agent) que Nuvio appliquera au
  * player : aucun proxy intermédiaire.
  *
- * Ordre de préférence (v3.1.7 — famille vidzy rétrogradée) :
- *   uqload → netu → filmoon → voe → luluvid → premium → vidzy
+ * Ordre de préférence (v3.1.9 — extracteurs des sites FR additionnels) :
+ *   uqload → vidmoly → xtremestream → netu → filmoon → voe → veev →
+ *   luluvid → premium → vidzy
+ *   • vidmoly : TLD tournants (.biz vivant en live 2026-10, .net 301 → .biz),
+ *     redirection JWT, port de gowaru resolveVidmoly.
+ *   • xtremestream : lecteur n°1 de l'embed lecteurvideo.com (section OD_FR,
+ *     ~60-70 % des liens VF, gowaru priority 5) — video_id + m3u8_loader_url,
+ *     le loader exige le Referer du player lui-même (403 sinon).
+ *   • veev/wishonly/livavid/lulavid/livastream : même player packé
+ *     (gowaru resolvePackedPlayer) — fetch + unpack + file/sources.
  *
  * v3.1.8 — calque des références (retour utilisateur : « regardez comment
  * sestudio et gowaru-nuvio-providers font au lieu d'inventer ») :
@@ -38,7 +46,10 @@ import { extractSubtitles } from './subtitles.js';
 const BROWSER_UA =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-export const PROVIDER_ORDER = ['uqload', 'netu', 'filmoon', 'voe', 'luluvid', 'premium', 'vidzy'];
+export const PROVIDER_ORDER = [
+    'uqload', 'vidmoly', 'xtremestream', 'netu', 'filmoon', 'voe', 'veev',
+    'luluvid', 'premium', 'vidzy',
+];
 
 /** Format jouable : m3u8 → HLS, sinon MP4. */
 export function kindOf(url) {
@@ -392,16 +403,176 @@ async function resolveVoe(embedUrl, opts) {
     return { url: streamUrl, referer: finalUrl, ua: BROWSER_UA };
 }
 
+/* ──────────────────────────────── vidmoly ──────────────────────────────── */
+
+/* TLD connus (gowaru, live 2026-10) : .biz servi dans les iframes, .net 301
+ * → .biz ; .to/.ru/.is replis ; .me mort. L'ordre respecte le domaine
+ * d'abord (la page peut être servie depuis un TLD encore inconnu). */
+const VIDMOLY_TLDS = ['biz', 'net', 'ru', 'is', 'to'];
+
+const VIDMOLY_FILE_RE =
+    /file\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']/i;
+const VIDMOLY_SOURCES_RE =
+    /sources\s*:\s*\[["']([^"']+\.(?:m3u8|mp4)[^"']*)["']\]/i;
+const VIDMOLY_LOOSE_RE = /["'](https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)["']/i;
+const VIDMOLY_JS_REDIRECT_RE =
+    /window\.location\.(?:replace\(['"]|href\s*=\s*['"])([^'"]+)['"]/;
+
+function vidmolyMatch(html) {
+    return (
+        VIDMOLY_FILE_RE.exec(html) ||
+        VIDMOLY_SOURCES_RE.exec(html) ||
+        VIDMOLY_LOOSE_RE.exec(html)
+    );
+}
+
+async function fetchVidmolyPage(url, opts) {
+    const fetchDomain = hostnameOf(url);
+    const ref = fetchDomain ? 'https://' + fetchDomain + '/' : 'https://vidmoly.biz/';
+    const res = await fetchText(url, {
+        timeout: opts.timeout,
+        headers: { Referer: ref, Origin: ref.replace(/\/$/, ''), Accept: 'text/html,*/*' },
+        signal: opts.signal,
+    });
+    let html = res.text;
+    // Page pub / 404 (courte sans redirection JS) ou marker ad
+    // (gowaru 'finisheddaysflamboyant' — domaine pub du réseau).
+    const hasJsRedirect = /window\.location\.replace/.test(html);
+    if ((html.length < 500 && !hasJsRedirect) || html.indexOf('finisheddaysflamboyant') !== -1) {
+        throw new Error('page pub/404 vidmoly : ' + url);
+    }
+    const packed = findPackedScript(html);
+    if (packed) html = unpack(packed);
+    return { html: html, finalUrl: res.finalUrl, ref: ref };
+}
+
+async function resolveVidmoly(embedUrl, opts) {
+    // Domaines à tenter : le domaine d'origine d'abord, puis les TLD connus.
+    const domains = [embedUrl];
+    for (const tld of VIDMOLY_TLDS) {
+        const alt = embedUrl.replace(/vidmoly\.(net|to|ru|is|biz|me)/i, 'vidmoly.' + tld);
+        if (alt !== embedUrl && domains.indexOf(alt) === -1) domains.push(alt);
+    }
+
+    let lastError = 'aucun domaine vidmoly n a répondu';
+    for (const fetchUrl of domains.slice(0, 4)) {
+        let page;
+        try {
+            page = await fetchVidmolyPage(fetchUrl, opts);
+        } catch (err) {
+            lastError = hostnameOf(fetchUrl) + ' : ' + (err && err.message ? err.message : err);
+            continue;
+        }
+
+        let m = vidmolyMatch(page.html);
+        if (!m) {
+            // Redirection JWT (window.location.replace('URL?ch=1&js=…')) :
+            // suivre UNE fois puis re-extraire (gowaru).
+            const jr = VIDMOLY_JS_REDIRECT_RE.exec(page.html);
+            if (jr && jr[1] !== fetchUrl) {
+                try {
+                    const page2 = await fetchVidmolyPage(resolveUrl(page.finalUrl, jr[1]), opts);
+                    m = vidmolyMatch(page2.html);
+                    if (m) page = page2;
+                } catch (err) {
+                    /* re-tomber sur l'erreur du domaine courant */
+                }
+            }
+        }
+        if (!m) {
+            lastError = hostnameOf(fetchUrl) + ' : pas de source m3u8/mp4';
+            continue;
+        }
+        // Referer de lecture = domaine qui a RÉELLEMENT servi la page
+        // (après 301 éventuelle) — gowaru serveRefOf.
+        const serveDomain = hostnameOf(page.finalUrl) || hostnameOf(fetchUrl);
+        return {
+            url: m[1],
+            referer: 'https://' + serveDomain + '/',
+            ua: BROWSER_UA,
+        };
+    }
+    throw new Error('vidmoly irresolvable (' + lastError + ')');
+}
+
+/* ────────────────────── xtremestream (lecteurvideo) ───────────────────── */
+
+/**
+ * lecteur2.xtremestream.xyz — lecteur principal de l'embed lecteurvideo.com
+ * (section OD_FR, ~60-70 % des liens VF — gowaru priority 5, AVANT uqload
+ * « souvent expiré »). Structure vérifiée en live par gowaru (2026-10) :
+ *   player/index.php?data=…   → page HTML avec
+ *     var video_id = `…`  et  var m3u8_loader_url = `…/xs1.php?data=`
+ *   {m3u8_loader_url}{video_id} → le CORPS EST le master.m3u8 direct.
+ * Referer : la page player exige lecteurvideo.com ; le loader exige le
+ * domaine du player LUI-MÊME (403 anti-hotlink avec lecteurvideo).
+ */
+async function resolveXtremestream(embedUrl, opts) {
+    const origin = originOf(embedUrl) || 'https://lecteur2.xtremestream.xyz';
+    const res = await fetchText(embedUrl, {
+        timeout: opts.timeout,
+        headers: { Referer: 'https://lecteurvideo.com/', Accept: 'text/html,*/*' },
+        signal: opts.signal,
+    });
+    const html = res.text;
+    const videoId = (/(?:var|const|let)\s+video_id\s*=\s*[`"']([A-Za-z0-9_-]+)[`"']/).exec(html);
+    const loaderUrl = (/(?:var|const|let)\s+m3u8_loader_url\s*=\s*[`"']([^`"']+)[`"']/).exec(html);
+    if (!videoId || !loaderUrl) {
+        throw new Error('xtremestream : video_id/loader introuvables (' + origin + ')');
+    }
+    const loaderFull = loaderUrl[1] + videoId[1];
+    const manifest = await fetchText(loaderFull, {
+        timeout: opts.timeout,
+        headers: { Referer: origin + '/', Accept: '*/*' },
+        signal: opts.signal,
+    });
+    if (!manifest.text || manifest.text.indexOf('#EXTM3U') === -1) {
+        throw new Error('xtremestream : le loader ne sert pas de manifest');
+    }
+    return { url: loaderFull, referer: origin + '/', ua: BROWSER_UA };
+}
+
+/* ─────────────── veev / wishonly / miroirs lulu (player packé) ─────────── */
+
+/**
+ * Player packé générique (gowaru resolvePackedPlayer) : veev.to,
+ * wishonly.site, livavid/lulavid/livastream — même logiciel de player
+ * (Dean-Edwards packer + file:/sources:) que la famille luluvid, mais
+ * servie depuis ses propres CDN (pas de rejet tnmr ici : la sonde verify
+ * tranchera les liens morts).
+ */
+async function resolvePackedHost(embedUrl, opts) {
+    const origin = originOf(embedUrl);
+    const res = await fetchText(embedUrl, {
+        timeout: opts.timeout,
+        headers: { Referer: origin + '/', Accept: 'text/html,*/*' },
+        signal: opts.signal,
+    });
+    let html = res.text;
+    const packed = findPackedScript(html);
+    if (packed) html = unpack(packed);
+
+    const m =
+        /file\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']/i.exec(html) ||
+        /sources\s*:\s*\[[^\]]*?["'](https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)["']/i.exec(html) ||
+        /["'](https?:\/\/[^"']+\.(?:m3u8|mp4)[^"']*)["']/i.exec(html);
+    if (!m) throw new Error('player packé sans source (' + hostnameOf(embedUrl) + ')');
+    return { url: m[1], referer: origin + '/', ua: BROWSER_UA };
+}
+
 /* ───────────────────────────── dispatch général ────────────────────────── */
 
 const RESOLVERS = {
     uqload: resolveUqload,
+    vidmoly: resolveVidmoly,
+    xtremestream: resolveXtremestream,
     vidzy: (u, o) => resolveVidzyFamily(u, o, 'vidzy'),
     premium: (u, o) => resolveVidzyFamily(u, o, 'premium'),
     netu: resolveNetu,
     luluvid: resolveLuluvid,
     filmoon: resolveFilmoon,
     voe: resolveVoe,
+    veev: resolvePackedHost,
 };
 
 /** Devine l'extracteur d'après l'URL d'embed (indices de sestudio/scraper.py). */
@@ -417,6 +588,17 @@ export function providerFromEmbedUrl(src) {
         ['lulust', 'luluvid'], // gowaru : 'lulust.com'.includes('lulu.') === false — hint dédié
         ['lulustream', 'luluvid'],
         ['vidhsareup', 'luluvid'],
+        // vidmoly + variantes (voembed/ansembed = même player) — AVANT le hint
+        // générique 'voe' : 'voembed'.indexOf('voe') === 0 sinon match voe.
+        ['vidmoly', 'vidmoly'],
+        ['voembed', 'vidmoly'],
+        ['ansembed', 'vidmoly'],
+        ['xtremestream', 'xtremestream'],
+        ['veev', 'veev'],
+        ['wishonly', 'veev'],
+        ['livavid', 'veev'],
+        ['lulavid', 'veev'],
+        ['livastream', 'veev'],
         ['voe', 'voe'],
         ['vidaraa', 'filmoon'],
         ['filmoon', 'filmoon'],

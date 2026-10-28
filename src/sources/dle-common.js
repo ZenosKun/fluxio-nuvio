@@ -27,8 +27,12 @@ export const DLE_SITES = {
 };
 
 // Ordre des hosts tel que le plugin les préfère (vidzy en dernier : CDN
-// exigeant une empreinte TLS Chrome, voir src/hosts/index.js).
-const PROVIDER_ORDER = ['uqload', 'premium', 'netu', 'luluvid', 'filmoon', 'voe', 'vidzy'];
+// exigeant une empreinte TLS Chrome, voir src/hosts/index.js). v3.1.9 :
+// vidmoly/xtremestream/veev ajoutés (sites FR additionnels).
+const PROVIDER_ORDER = [
+    'uqload', 'vidmoly', 'xtremestream', 'premium', 'netu', 'luluvid',
+    'filmoon', 'voe', 'veev', 'vidzy',
+];
 
 const SEASON_RE = /[Ss]aison\s+(\d+)/i;
 const ONCLICK_RE = /location\.href=['"]([^'"]+)['"]/;
@@ -515,6 +519,17 @@ const EMBED_HINTS = [
     ['luluvid', 'luluvid'],
     ['lulustream', 'luluvid'],
     ['vidhsareup', 'luluvid'],
+    // v3.1.9 — mêmes indices que hosts/index.js (vidmoly/voembed AVANT 'voe',
+    // sinon 'voembed' matcherait le hint générique 'voe').
+    ['vidmoly', 'vidmoly'],
+    ['voembed', 'vidmoly'],
+    ['ansembed', 'vidmoly'],
+    ['xtremestream', 'xtremestream'],
+    ['veev', 'veev'],
+    ['wishonly', 'veev'],
+    ['livavid', 'veev'],
+    ['lulavid', 'veev'],
+    ['livastream', 'veev'],
     ['voe', 'voe'],
     ['vidaraa', 'filmoon'],
     ['filmoon', 'filmoon'],

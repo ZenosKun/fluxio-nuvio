@@ -32,10 +32,17 @@ const HEADERS = {
 };
 
 const TIMEOUTS = { FASTFLUX: 10000, DISCOVERY: 12000, EMBED: 10000 };
-const MAX_EMBEDS_TO_TRY = 4;
+const MAX_EMBEDS_TO_TRY = 5;
 const MAX_STREAMS = 4;
 
 const FLUXORA_ORIGIN = 'https://fluxora.sbs';
+
+/* Frembed multi-domaines (v3.1.9) : l'API film.php/serie.php est vivante sur
+ * plusieurs domaines (sonde live 2026-10-28 : .cyou 0,9 s / .bond 0,9 s /
+ * .site 0,8 s — .best DNS mort, retiré). Le premier qui répond suffit : la
+ * boucle d'embeds s'arrête dès MAX_STREAMS ; un domaine mort coûte son
+ * timeout mais seulement si les précédents n'ont rien donné. */
+const FREMBED_HOSTS = ['frembed.cyou', 'frembed.bond', 'frembed.site'];
 
 export default {
     id: 'webflix',
@@ -177,20 +184,24 @@ async function discovery(tmdbId, cfg, signal) {
  *   - Heiwastream : SPA, player construit en JS — non extractible statiquement
  *   - WWEmbed     : méta-page multi-niveaux (chaque candidate exige encore un
  *     fetch + parsing dédié) — ratio coût/résultat nul
- * → Zenix d'abord (flow dédié, le plus fiable), puis Frembed en dernier
- * (frembed.best : DNS mort à la capture ; frembed.cyou vivant). Un embed
- * mort ne doit jamais coûter ses 10 s en début de chaîne. */
+ * → Zenix d'abord (flow dédié, le plus fiable), puis Frembed (multi-domaines
+ * v3.1.9 : .cyou principal, .bond/.site replis — voir FREMBED_HOSTS). Un
+ * embed mort ne doit jamais coûter ses 10 s en début de chaîne. */
 function buildTmdbEmbeds(tmdbId, isTv, s, e) {
     const id = encodeURIComponent(tmdbId);
     const out = [];
     if (!isTv) {
         out.push({ url: 'https://fluxora.sbs/embed/zenix?tmdb=' + id + '&type=movie&season=&episode=&lang=vf', lang: 'vf', source: 'Zenix' });
         out.push({ url: 'https://fluxora.sbs/embed/zenix?tmdb=' + id + '&type=movie&season=&episode=&lang=vostfr', lang: 'vostfr', source: 'Zenix' });
-        out.push({ url: 'https://frembed.cyou/api/film.php?id=' + id, lang: 'vf', source: 'Frembed' });
+        for (const host of FREMBED_HOSTS) {
+            out.push({ url: 'https://' + host + '/api/film.php?id=' + id, lang: 'vf', source: 'Frembed' });
+        }
     } else {
         out.push({ url: 'https://fluxora.sbs/embed/zenix?tmdb=' + id + '&type=tv&season=' + s + '&episode=' + e + '&lang=vf', lang: 'vf', source: 'Zenix' });
         out.push({ url: 'https://fluxora.sbs/embed/zenix?tmdb=' + id + '&type=tv&season=' + s + '&episode=' + e + '&lang=vostfr', lang: 'vostfr', source: 'Zenix' });
-        out.push({ url: 'https://frembed.cyou/api/serie.php?id=' + id + '&sa=' + s + '&ep=' + e, lang: 'vf', source: 'Frembed' });
+        for (const host of FREMBED_HOSTS) {
+            out.push({ url: 'https://' + host + '/api/serie.php?id=' + id + '&sa=' + s + '&ep=' + e, lang: 'vf', source: 'Frembed' });
+        }
     }
     return out;
 }

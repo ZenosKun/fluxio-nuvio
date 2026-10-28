@@ -31,6 +31,11 @@ const AFFINITY = {
     bflix: { anime: 2, movie: 2, tv: 2, generic: 2 },
     papadustream: { anime: 1, movie: 2, tv: 2, generic: 2 },
     webflix: { anime: 2, movie: 2, tv: 2, generic: 2 },
+    // v3.1.9 — FrenchStream : généraliste résolu par tmdbId (tier direct,
+    // TTFB 0,29 s + xfsearch tagz exact → coûte 2-3 requêtes). WookaFR :
+    // généraliste de recherche par titre (wave1 partout).
+    'french-stream': { anime: 2, movie: 2, tv: 2, generic: 2 },
+    wookafr: { anime: 2, movie: 2, tv: 2, generic: 2 },
 };
 
 /** Affinité d'une source pour un type (0 si inconnue). */

@@ -1,13 +1,13 @@
 {
  "name": "fluxio-nuvio",
- "version": "3.1.8",
+ "version": "3.1.9",
  "scrapers": [
   {
    "id": "fluxio",
    "name": "Fluxio",
-   "description": "Films, séries et animés VF/VOSTFR en direct — 5 sources FR orchestrées (FStream, French-Manga, BFlix, Papadustream, Webflix) : toutes les qualités des sources réactives affichées, sites bloqués coupés après 5 s (anti-blocage), budget global 25 s garanti sous le timeout de l'app (v3.1.2 anti « impossible de charger les streams »), v3.1.7 anti buffering infini : headers de lecture (Referer/UA) sur les flux directs webflix, sonde par segment, famille vidzy (TLS Chrome) dépriorisée, v3.1.8 (calque sestudio + gowaru-nuvio-providers) : vraie qualité des flux (1080p/4K lue dans la playlist HLS ou l'URL), liens prouvés morts par la sonde RETIRÉS de la liste (anti flux-qui-ne-lance-jamais), CDN tnmr.org (luluvid) rejeté — 403 vérifié en live, vidzy 2026+ décodé par brute-force de l'empreinte layout (256 clés), Referer de lecture vidzy.live/fsvid.lol, leurre troll/master.m3u8 rejeté, VOSTFR webflix via le vrai flow Zenix (endpoints sources + play lang=vostfr), routage anime/film/série via TMDB, recherche ancrée TMDB (zéro mauvais match), hosts uqload/vidzy/premium/netu/luluvid/filmoon/voe résolus en JS. Aucun serveur requis ; un serveur sestudio reste optionnel en repli.",
+   "description": "Films, séries et animés VF/VOSTFR en direct — 7 sources FR orchestrées (FStream, French-Manga, BFlix, Papadustream, Webflix, FrenchStream, WookaFR) : FrenchStream résolu directement par ID TMDB (xfsearch tagz, zéro recherche de titre, site le plus rapide mesuré 0,29 s), WookaFR via l'embed lecteurvideo (sections de langue OD_FR/VFF/VFQ/VOSTFR, 10+ serveurs par fiche), Frembed en repli multi-domaines (.cyou/.bond/.site), v3.1.8 : vraie qualité des flux, liens prouvés morts par la sonde RETIRÉS de la liste (anti flux-qui-ne-lance-jamais), CDN tnmr.org rejeté, vidzy décodé par brute-force, leurre troll rejeté, VOSTFR webflix via le vrai flow Zenix, routage anime/film/série via TMDB, recherche ancrée TMDB (zéro mauvais match), hosts uqload/vidmoly/xtremestream/vidzy/premium/netu/luluvid/filmoon/voe/veev résolus en JS. Aucun serveur requis ; un serveur sestudio reste optionnel en repli.",
    "author": "ZenosKun",
-   "version": "3.1.8",
+   "version": "3.1.9",
    "supportedTypes": [
     "movie",
     "tv"
@@ -32,5 +32,5 @@
    ]
   }
  ],
- "description": "Films, séries et animés VF/VOSTFR en direct — 5 sources FR orchestrées (FStream, French-Manga, BFlix, Papadustream, Webflix) : toutes les qualités des sources réactives affichées, sites bloqués coupés après 5 s (anti-blocage), budget global 25 s garanti sous le timeout de l'app (v3.1.2 anti « impossible de charger les streams »), v3.1.7 anti buffering infini : headers de lecture (Referer/UA) sur les flux directs webflix, sonde par segment, v3.1.8 (calque sestudio + gowaru-nuvio-providers) : vraie qualité des flux (1080p/4K lue dans la playlist HLS ou l'URL), liens prouvés morts par la sonde RETIRÉS de la liste (anti flux-qui-ne-lance-jamais), CDN tnmr.org (luluvid) rejeté — 403 vérifié en live, vidzy 2026+ décodé par brute-force de l'empreinte layout (256 clés), Referer de lecture vidzy.live/fsvid.lol, leurre troll/master.m3u8 rejeté, VOSTFR webflix via le vrai flow Zenix (endpoints sources + play lang=vostfr), routage anime/film/série via TMDB, recherche ancrée TMDB (zéro mauvais match), hosts uqload/vidzy/premium/netu/luluvid/filmoon/voe résolus en JS. Aucun serveur requis ; un serveur sestudio reste optionnel en repli."
+ "description": "Films, séries et animés VF/VOSTFR en direct — 7 sources FR orchestrées (FStream, French-Manga, BFlix, Papadustream, Webflix, FrenchStream, WookaFR) : FrenchStream résolu directement par ID TMDB (xfsearch tagz, zéro recherche de titre), WookaFR via l'embed lecteurvideo (sections de langue OD_*, 10+ serveurs par fiche), Frembed en repli multi-domaines (.cyou/.bond/.site), v3.1.8 : vraie qualité des flux, liens prouvés morts par la sonde RETIRÉS de la liste (anti flux-qui-ne-lance-jamais), CDN tnmr.org rejeté, vidzy décodé par brute-force, leurre troll rejeté, VOSTFR webflix via le vrai flow Zenix, routage anime/film/série via TMDB, recherche ancrée TMDB (zéro mauvais match), hosts uqload/vidmoly/xtremestream/vidzy/premium/netu/luluvid/filmoon/voe/veev résolus en JS. Aucun serveur requis ; un serveur sestudio reste optionnel en repli."
 }

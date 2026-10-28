@@ -49,8 +49,8 @@ module.exports = {
             key: 'sources',
             label: 'Sources activées (optionnel)',
             description:
-                'Ids séparés par des virgules : fstream, french-manga, bflix, papadustream, webflix. Vide = toutes.',
-            placeholder: 'fstream, webflix, bflix',
+                'Ids séparés par des virgules : fstream, french-manga, bflix, papadustream, webflix, french-stream, wookafr. Vide = toutes.',
+            placeholder: 'french-stream, webflix, bflix',
         },
         {
             type: 'toggle',

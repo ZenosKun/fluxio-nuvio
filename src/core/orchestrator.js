@@ -39,8 +39,15 @@ import * as bridge from '../bridge/sestudio.js';
  * court garantit que la réponse arrive à temps). */
 const SOFT_MS = 5000;
 
-/** Ordre de lancement du tier direct (coût réseau attendu croissant). */
-const DIRECT_ORDER = { webflix: 1, bflix: 2, papadustream: 3 };
+/** Ordre de lancement du tier direct (coût réseau attendu croissant).
+ * v3.1.9 : FrenchStream en 2e — xfsearch tagz exact par tmdbId, 2-3
+ * requêtes sur le site FR le plus rapide mesuré (TTFB 0,29 s). */
+const DIRECT_ORDER = {
+    webflix: 1,
+    'french-stream': 2,
+    bflix: 3,
+    papadustream: 4,
+};
 
 const LANG_KEY_BY_LABEL = { VF: 'vf', VOSTFR: 'vostfr', VO: 'vo' };
 

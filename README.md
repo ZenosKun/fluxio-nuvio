@@ -2,7 +2,7 @@
 
 **Plugin Nuvio multi-sources FR — orchestration intelligente, tout ce qui répond s'affiche.**
 
-Films, séries et animés VF/VOSTFR en lecture directe sur [Nuvio](https://nuvio.tv) (Mobile + TV), sans serveur. Fluxio orchestre **5 sources françaises** autour de trois principes : *routage par type de contenu*, *anti-blocage* (les sources réactives livrent tous leurs flux — qualités multiples incluses ; les bloquées sont coupées après 5 s) et *ancrage TMDB* (zéro mauvais match — jamais un animé à la place d'un documentaire).
+Films, séries et animés VF/VOSTFR en lecture directe sur [Nuvio](https://nuvio.tv) (Mobile + TV), sans serveur. Fluxio orchestre **7 sources françaises** autour de trois principes : *routage par type de contenu*, *anti-blocage* (les sources réactives livrent tous leurs flux — qualités multiples incluses ; les bloquées sont coupées après 5 s) et *ancrage TMDB* (zéro mauvais match — jamais un animé à la place d'un documentaire).
 
 ---
 
@@ -36,7 +36,8 @@ Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, varianc
         └──────────┴───────────────┘              film/série → FStream
                           │
                           ▼ extracteurs d'hôtes (JS, portés de sestudio)
-        uqload · vidzy · premium · netu · luluvid · filmoon · voe
+        uqload · vidmoly · xtremestream · netu · filmoon · voe · veev ·
+        luluvid · premium · vidzy   (v3.1.9 : vidmoly, xtremestream, veev)
 ```
 
 **Trois idées structurantes :**
@@ -53,7 +54,9 @@ Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, varianc
 | **French-Manga** | recherche titre TMDB | animes VOSTFR (VF) | spécialiste anime, numérotation absolue gérée |
 | **BFlix** | direct par tmdbId | VO + sous-titres FR/EN | infaillible sur l'identité du contenu |
 | **Papadustream** | direct par IMDb (TMDB→external_ids) | films/séries HLS multi-audio VF/VO | tokens signés, refresh automatique |
-| **Webflix** | direct par tmdbId | MP4/HLS VF + VOSTFR via le flow Zenix réel (sources + play lang=vostfr) | FastFlux, Discovery (1 appel = tous les épisodes), Zenix, Frembed |
+| **Webflix** | direct par tmdbId | MP4/HLS VF + VOSTFR via le flow Zenix réel (sources + play lang=vostfr) | FastFlux, Discovery (1 appel = tous les épisodes), Zenix, Frembed multi-domaines (.cyou/.bond/.site) |
+| **FrenchStream** | direct par tmdbId (v3.1.9) | films/séries VF/VOSTFR | site le plus rapide mesuré (TTFB 0,29 s) — xfsearch `tagz f-/s-{tmdbId}` : zéro recherche de titre, `film_api` + `eps_*.txt` (même structure que French-Manga), hosts fsvid/vidzy/uqload |
+| **WookaFR** | recherche titre TMDB (v3.1.9) | films/séries/animés VF + VOSTFR | thème Dooplay/somosmovies — embed lecteurvideo.com à sections de langue OD_FR/VFF/VFQ/VOSTFR, 10+ serveurs par fiche (xtremestream, uqload, vidmoly, veev…), nonce AJAX `getepisodes` |
 
 Routage anime/film/série via TMDB (genre Animation + langue originale japonaise, mode strict). Désactivable (`detectAnime=false`) : comportement v2, toutes les sources pour tout.
 
@@ -72,7 +75,7 @@ Aucun serveur requis. Un serveur [sestudio](https://pypi.org/project/sestudio/) 
 |---|---|---|
 | Langue préférée | VF | langue demandée en priorité, bascule auto si absente |
 | Autoriser autre langue/site | ON | secours si absent |
-| Sources activées | toutes | ids : `fstream, french-manga, bflix, papadustream, webflix` |
+| Sources activées | toutes | ids : `fstream, french-manga, bflix, papadustream, webflix, french-stream, wookafr` |
 | Détecter les animés via TMDB | ON | routage par type de contenu |
 | **Couper les sources bloquantes** | ON | tout afficher des sources réactives ; après 5 s (avec ≥ 1 flux), sites bloqués abandonnés ; OFF = tout attendre (v2) |
 | Clé API TMDB personnelle | clé publique | recommandée (gratuite sur themoviedb.org) |
@@ -103,6 +106,7 @@ La régression d'un parseur se fait **offline en secondes** contre `tests/fixtur
 ## Limites connues
 
 - Les hosts gratuits (uqload, vidzy…) restent périssables ; l'anti-blocage garantit que leurs lenteurs ne te bloquent pas.
+- v3.1.9 — certains CDN servent le vrai média avec un content-type mensonger (`text/html`, ex. fastflux/zen-blk.store) : la sonde goûte les premiers octets (signature MP4 `ftyp`) avant de déclarer un lien mort — plus de fausses morts sur ces CDN.
 - BFlix est VO/VOSTFR : la VF vient du tier DLE/Papa.
 - Vidzy exige une empreinte TLS navigateur : dépriorisé en fin de chaîne d'hôtes.
 - Un contenu absent de TMDB ne peut pas être cherché (choix d'architecture : échec propre plutôt que faux match).

@@ -20,7 +20,19 @@ globalThis.fetch = async (url, o = {}) => {
   if (url.includes('seg0.ts')) return { status: 200, url, headers: h('video/mp2t'), text: async () => '' };
   if (url.includes('htmlseg.m3u8')) return { status: 200, url, text: async () => '#EXTM3U\n#EXTINF:4.0,\nseg-html.ts' };
   if (url.includes('seg-html.ts')) return { status: 200, url, headers: h('text/html'), text: async () => '' };
-  if (url.includes('proxy.mp4')) return { status: 200, url, headers: h('text/html; charset=utf-8'), text: async () => '' };
+  // v3.1.9 — content-type mensonger : le CDN sert le VRAI MP4 mais annonce
+  // text/html (fastflux webflix → zen-blk.store, vérifié live). La sonde
+  // goûte les premiers octets (GET Range) avant de trancher.
+  if (url.includes('proxy.mp4')) return { status: 200, url, headers: h('text/html; charset=utf-8'), text: async () => '<html>captcha</html>' };
+  // ⚠ AVANT 'lying.mp4' : 'voidlying' CONTIENT 'lying' — ordre discriminant.
+  if (url.includes('voidlying.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
+    return { status: 200, url, headers: h('text/html'), text: async () => '' };
+  }
+  if (url.includes('lying.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('text/html'), text: async () => '' };
+    return { status: 200, url, headers: h('text/html'), text: async () => '\u0000\u0000\u0000\u0018ftypisom\u0000\u0000\u0002\u0000isomiso2avc1mp41' };
+  }
   return { status: 200, url, text: async () => '' };
 };
 const cfg = { fallbackLangs: ['vf', 'vostfr', 'vo'], allowOtherLang: true };
@@ -76,7 +88,19 @@ ok('segment content-type text/html → RETIRÉ', outHtmlSeg.length === 0, JSON.s
 
 const proxied = finalizeStreams([mk('W · proxy · MP4 · VF', 'https://t.example/proxy.mp4', 'webflix')], cfg);
 const outProxy = await verifyStreams(proxied, { remainingMs: 20000 });
-ok('MP4 HEAD 200 content-type text/html → RETIRÉ (redirection proxy)', outProxy.length === 0, JSON.stringify(outProxy.map(s => s.name)));
+ok('MP4 HEAD 200 text/html + corps HTML (goûtage) → RETIRÉ (redirection proxy)', outProxy.length === 0, JSON.stringify(outProxy.map(s => s.name)));
+
+// v3.1.9 — CDN à content-type mensonger (fastflux/zen-blk.store) : le corps
+// est le VRAI MP4 (signature ftyp) → le lien doit être CONSERVÉ.
+const lying = finalizeStreams([mk('W · fastflux · MP4 · VF', 'https://t.example/lying.mp4', 'webflix')], cfg);
+const outLying = await verifyStreams(lying, { remainingMs: 20000 });
+ok('MP4 200 text/html + corps binaire ftyp → CONSERVÉ (fausse mort réparée)', outLying.length === 1, JSON.stringify(outLying.map(s => s.name)));
+const sniffCall = calls.find(c => c[1].includes('lying.mp4') && c[0] === 'GET');
+ok('goûtage en GET Range borné', !!sniffCall && sniffCall[2].Range === 'bytes=0-16383', JSON.stringify(sniffCall && sniffCall[2]));
+
+const emptyLying = finalizeStreams([mk('W · fastflux vide · MP4 · VF', 'https://t.example/voidlying.mp4', 'webflix')], cfg);
+const outEmpty = await verifyStreams(emptyLying, { remainingMs: 20000 });
+ok('MP4 text/html + corps vide → « ? » conservé (on ne tue pas pour notre faute)', outEmpty.length === 1, JSON.stringify(outEmpty.map(s => s.name)));
 
 const weakFin = finalizeStreams([
   mk('FStream · uqload · HLS · VF', 'https://w.example/good.m3u8', 'fstream'),

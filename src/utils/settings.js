@@ -10,7 +10,8 @@
  *   - language       : 'vf' | 'vostfr' | 'all'  (langue préférée)
  *   - allowOtherLang : basculer de site/langue si absente
  *   - sources        : ids séparés par des virgules ('' = tous) —
- *                      fstream, french-manga, bflix, papadustream, webflix
+ *                      fstream, french-manga, bflix, papadustream, webflix,
+ *                      french-stream, wookafr
  *   - detectAnime    : détection anime TMDB + routage des sources de recherche
  *   - earlyExit      : couper les sources bloquantes (échéance douce 5 s)
  *   - softMs         : échéance douce en ms (3000-15000, SCRAPER_SETTINGS

@@ -25,9 +25,13 @@ import frenchManga from '../sources/french-manga.js';
 import bflix from '../sources/bflix.js';
 import papadustream from '../sources/papadustream.js';
 import webflix from '../sources/webflix.js';
+import frenchStream from '../sources/french-stream.js';
+import wookafr from '../sources/wookafr.js';
 
 /** Ordre de déclaration = ordre de présentation dans les réglages. */
-export const ALL_SOURCES = [fstream, frenchManga, bflix, papadustream, webflix];
+export const ALL_SOURCES = [
+    fstream, frenchManga, bflix, papadustream, webflix, frenchStream, wookafr,
+];
 
 /** Ids connus du registre (réglages « sources »). */
 export const KNOWN_IDS = ALL_SOURCES.map(s => s.id);

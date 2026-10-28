@@ -99,7 +99,35 @@ export async function probeOne(st, timeout, deep) {
         try {
             const res = await fetchText(st.url, { method: 'HEAD', headers: headers, timeout: timeout });
             if (looksHtml(res.text) || /text\/html/i.test(res.contentType || '')) {
-                return { ok: false, why: 'redirection vers page HTML' };
+                // ⚠ v3.1.9 : certains CDN servent le VRAI média avec un
+                // content-type mensonger text/html (vérifié live : fastflux
+                // webflix → cdn80.zen-blk.store répond 200 + text/html et
+                // délivre 1,4 Go de MP4). Avant de tuer le lien, on goûte les
+                // premiers octets (GET Range 16 Ko, timeout court) :
+                //   HTML réel → mort ; binaire non-HTML (signature ftyp ou
+                //   autre) → vivant ; goûtage impossible → « ? » (on ne tue
+                //   pas un lien pour notre faute).
+                try {
+                    const sniff = await fetchText(st.url, {
+                        method: 'GET',
+                        headers: Object.assign({}, headers, { Range: SEGMENT_RANGE }),
+                        timeout: Math.min(1500, left()),
+                    });
+                    const body = String(sniff.text || '');
+                    if (looksHtml(body)) return { ok: false, why: 'corps HTML (content-type mensonger)' };
+                    if (!body) return { ok: null, why: 'corps vide (content-type mensonger)' };
+                    // Signature MP4 : boîte ftyp en offset 4 (taille 4 o puis
+                    // 'ftyp'). Tout autre binaire non-HTML est accepté aussi.
+                    const isFtyp = body.length > 8 && body.slice(4, 8) === 'ftyp';
+                    if (!isFtyp && body.charAt(0) === '<') {
+                        return { ok: false, why: 'corps HTML (content-type mensonger)' };
+                    }
+                    const q = qualityFromUrl(res.finalUrl || st.url);
+                    return { ok: true, quality: q, why: 'content-type mensonger, média confirmé' };
+                } catch (err2) {
+                    if (neutralErr(err2)) return { ok: null, why: 'sonde interrompue' };
+                    return { ok: null, why: 'goûtage impossible (content-type mensonger)' };
+                }
             }
             const q = qualityFromUrl(res.finalUrl || st.url);
             return { ok: true, quality: q };
