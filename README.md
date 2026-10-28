@@ -2,7 +2,7 @@
 
 **Plugin Nuvio multi-sources FR — orchestration intelligente, tout ce qui répond s'affiche.**
 
-Films, séries et animés VF/VOSTFR en lecture directe sur [Nuvio](https://nuvio.tv) (Mobile + TV), sans serveur. Fluxio orchestre **7 sources françaises** autour de trois principes : *routage par type de contenu*, *anti-blocage* (les sources réactives livrent tous leurs flux — qualités multiples incluses ; les bloquées sont coupées après 5 s) et *ancrage TMDB* (zéro mauvais match — jamais un animé à la place d'un documentaire).
+Films, séries et animés VF/VOSTFR en lecture directe sur [Nuvio](https://nuvio.tv) (Mobile + TV), sans serveur. Fluxio orchestre **7 sources françaises** autour de trois principes : *routage par type de contenu*, *anti-blocage* (les sources réactives livrent tous leurs flux — qualités multiples incluses ; les bloquées sont coupées après 10 s) et *ancrage TMDB* (zéro mauvais match — jamais un animé à la place d'un documentaire).
 
 ---
 
@@ -12,7 +12,7 @@ Films, séries et animés VF/VOSTFR en lecture directe sur [Nuvio](https://nuvio
 |---|---|---|---|
 | Sources par recherche | 34 dont ~24 inutiles | 3 | 5, toutes utiles au type demandé |
 | Temps mesuré (film) | 43 s – 12 min | 2,7 – 12 s | **2,7 – 6 s** (tout afficher) |
-| Source lente ou morte | bloque tout | bloque | coupée après 5 s, le reste s'affiche |
+| Source lente ou morte | bloque tout | bloque | coupée après 10 s, le reste s'affiche |
 | Matching | titre brut → faux matches | ancré TMDB | ancré TMDB + plages d'épisodes |
 | 2e épisode d'une série | re-complet | re-complet | accéléré (caches TMDB + recherche) |
 
@@ -23,7 +23,7 @@ Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, varianc
 ```
                           ┌────────────────────────────────┐
    Nuvio (movie/tv)  ───► │ ORCHESTRATEUR (src/core)       │
-                          │ budget 25 s (18 s TV) · anti-blocage 5 s │
+                          │ budget 25 s (18 s TV) · anti-blocage 10 s │
                           │ vagues 1/2 · collecte partagée │
                           └───────┬───────────────┬────────┘
              tier direct (immédiat)│              │tier recherche (dès TMDB)
@@ -43,7 +43,7 @@ Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, varianc
 **Trois idées structurantes :**
 
 1. **Contrat SourceProvider** (`src/core/registry.js`) — chaque source est un module autonome (`{ id, label, needsMeta, run(ctx) }`). Ajouter une source = écrire un fichier et le déclarer dans le registre. Le noyau ne connaît ni leurs sites ni leurs protocoles.
-2. **Anti-blocage** (`src/core/stopper.js`) — une même source sert souvent **plusieurs qualités/hosts du même titre** : aucun quota de flux ne coupe prématurément, toutes les sources répondantes livrent tout. Seule l'échéance douce (5 s) abrège : au-delà, si ≥ 1 flux pertinent existe déjà, les sites bloqués ne te retardent plus — et les chaînes internes des sources abandonnent d'elles-mêmes aux frontières de boucles (identique TV/Mobile). L'échéance reste courte car **Nuvio attend la réponse complète du plugin** (réglage app « Stream Selection Timeout ») : une réponse trop tardive s'affiche en erreur. Désactivable (`earlyExit=false` : tout attendre jusqu'au budget, comportement v2) et ajustable (`softMs`, tunable SCRAPER_SETTINGS 3-15 s).
+2. **Anti-blocage** (`src/core/stopper.js`) — une même source sert souvent **plusieurs qualités/hosts du même titre** : aucun quota de flux ne coupe prématurément, toutes les sources répondantes livrent tout, et `finalizeStreams` (`src/core/stream.js`) trie à langue égale par qualité décroissante — **4K > 1080p > 720p > Auto (HLS) > Direct** (`qualityRank`, v3.1.11). Seule l'échéance douce (10 s) abrège : au-delà, si ≥ 1 flux pertinent existe déjà, les sites bloqués ne te retardent plus — et les chaînes internes des sources abandonnent d'elles-mêmes aux frontières de boucles (identique TV/Mobile). L'échéance reste sous le timeout de l'app car **Nuvio attend la réponse complète du plugin** (réglage app « Stream Selection Timeout ») : une réponse trop tardive s'affiche en erreur. Désactivable (`earlyExit=false` : tout attendre jusqu'au budget, comportement v2) et ajustable (`softMs`, tunable SCRAPER_SETTINGS 3-15 s).
 3. **Dégradation gracieuse TV/Mobile** — un seul bundle : sur Mobile (timers présents) la course anti-blocage et le parallélisme s'appliquent ; sur TV (fetch synchrone) les tâches se sérialisent naturellement et le noyau passe en mode « requêtes minimales ».
 
 ## Sources
@@ -77,7 +77,7 @@ Aucun serveur requis. Un serveur [sestudio](https://pypi.org/project/sestudio/) 
 | Autoriser autre langue/site | ON | secours si absent |
 | Sources activées | toutes | ids : `fstream, french-manga, bflix, papadustream, webflix, french-stream, wookafr` |
 | Détecter les animés via TMDB | ON | routage par type de contenu |
-| **Couper les sources bloquantes** | ON | tout afficher des sources réactives ; après 5 s (avec ≥ 1 flux), sites bloqués abandonnés ; OFF = tout attendre (v2) |
+| **Couper les sources bloquantes** | ON | tout afficher des sources réactives ; après 10 s (avec ≥ 1 flux), sites bloqués abandonnés ; OFF = tout attendre (v2) |
 | Clé API TMDB personnelle | clé publique | recommandée (gratuite sur themoviedb.org) |
 | URL serveur sestudio | vide | repli optionnel |
 | Timeout réseau | 30 s | budget par requête |

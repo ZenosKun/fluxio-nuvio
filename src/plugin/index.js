@@ -65,7 +65,7 @@ module.exports = {
             key: 'earlyExit',
             label: 'Couper les sources bloquantes (rapide)',
             description:
-                'Affiche TOUS les flux des sources qui répondent — qualités et hosts multiples inclus. Après 5 s, si au moins un flux est trouvé, les sites bloqués ne sont plus attendus. Désactivé : attendre toutes les sources jusqu au budget.',
+                'Affiche TOUS les flux des sources qui répondent — qualités et hosts multiples inclus. Après 10 s, si au moins un flux est trouvé, les sites bloqués ne sont plus attendus ; les meilleures qualités (4K, 1080p) sortent en tête de chaque langue. Désactivé : attendre toutes les sources jusqu au budget.',
             defaultValue: true,
         },
         {

@@ -12,7 +12,7 @@
  *      (plan.js : anime → French-Manga, films/séries → FStream).
  *   4. Anti-blocage (stopper.js) : toutes les sources répondantes livrent
  *      TOUS leurs flux (une même source sert souvent plusieurs qualités du
- *      même titre) ; passé l'échéance douce (5 s) avec ≥1 flux, on rend —
+ *      même titre) ; passé l'échéance douce (10 s) avec ≥1 flux, on rend —
  *      les sites bloqués ne pénalisent plus.
  *   5. Filets : seconde vague de recherche (sites écartés par le routage)
  *      si rien du tout, puis pont sestudio optionnel si configuré.
@@ -34,10 +34,12 @@ import { finalizeStreams, TEST_STREAMS } from './stream.js';
 import * as bridge from '../bridge/sestudio.js';
 
 /** Échéance douce : au-delà, 1 flux pertinent suffit à rendre (tunable
- * SCRAPER_SETTINGS.softMs, défaut 5 s — Nuvio attend la réponse complète
- * avant d'afficher et coupe selon son propre réglage de timeout : rester
- * court garantit que la réponse arrive à temps). */
-const SOFT_MS = 5000;
+ * SCRAPER_SETTINGS.softMs, défaut 10 s — v3.1.11 : à 5 s seule webflix
+ * (≈0,8 s) avait le temps de répondre, french-stream (≈2-3 s) et
+ * french-manga (≈4-6 s) étaient coupées avant de livrer ; Nuvio attend
+ * toujours la réponse complète avant d'afficher, 10 s reste sous son
+ * timeout de réponse). */
+const SOFT_MS = 10000;
 
 /** Ordre de lancement du tier direct (coût réseau attendu croissant).
  * v3.1.9 : FrenchStream en 2e — xfsearch tagz exact par tmdbId, 2-3

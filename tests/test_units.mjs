@@ -7,7 +7,7 @@
 import assert from 'node:assert';
 import { buildPlan, kindOf, affinityOf } from '../src/core/plan.js';
 import { createStopper, raceEarlyExit, makeSourceShouldStop } from '../src/core/stopper.js';
-import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, resolutionLabel, TEST_STREAMS } from '../src/core/stream.js';
+import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, qualityRank, resolutionLabel, TEST_STREAMS } from '../src/core/stream.js';
 import { bestHlsQuality } from '../src/core/verify.js';
 import { readConfig } from '../src/utils/settings.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
@@ -159,6 +159,80 @@ t('composeTitle : épisode paddé, type détecté', () => {
     assert.strictEqual(t1, 'FStream · E03 · uqload · MP4 · VF');
     const t2 = composeTitle({ site: 'BFlix', episode: 0, host: 'flixhq', url: 'https://x/playlist.m3u8', lang: 'VO' });
     assert.strictEqual(t2, 'BFlix · flixhq · HLS · VO');
+});
+
+console.log('\n— stream.js : tri qualité (v3.1.11) —');
+
+t('qualityRank : ordre 4K > 1440p > 1080p > 720p > 480p > Auto HLS > Direct', () => {
+    const r = q => qualityRank(q);
+    assert.ok(r('4K') < r('1440p'), '4K < 1440p');
+    assert.ok(r('1440p') < r('1080p'), '1440p < 1080p');
+    assert.ok(r('1080p') < r('720p'), '1080p < 720p');
+    assert.ok(r('720p') < r('480p'), '720p < 480p');
+    assert.ok(r('480p') < r('Auto (HLS)'), '480p < Auto HLS');
+    assert.ok(r('Auto (HLS)') < r('Direct'), 'Auto HLS < Direct');
+    assert.strictEqual(r('4K'), 0);
+    assert.strictEqual(r('2160p'), 0);
+    assert.strictEqual(r('1080p'), 2);
+    assert.strictEqual(r('720p'), 3);
+    assert.strictEqual(r('Direct'), 6);
+    assert.strictEqual(r(''), 6);
+    assert.strictEqual(r(undefined), 6);
+});
+
+t('finalizeStreams : à langue égale, meilleures qualités en tête (tri secondaire)', () => {
+    // Ordre d'arrivée volontairement inversé : les sources livrent dans leur
+    // propre ordre, le tri doit reconstruire 4K > 1080p > 720p > Auto > Direct.
+    const out = finalizeStreams(
+        [
+            makeStream({ title: 'fs', url: 'http://direct', quality: 'Direct', _langKey: 'vf' }),
+            makeStream({ title: 'fs', url: 'http://hls', quality: 'Auto (HLS)', _langKey: 'vf' }),
+            makeStream({ title: 'fs', url: 'http://720', quality: '720p', _langKey: 'vf' }),
+            makeStream({ title: 'fs', url: 'http://4k', quality: '4K', _langKey: 'vf' }),
+            makeStream({ title: 'fs', url: 'http://1080', quality: '1080p', _langKey: 'vf' }),
+        ],
+        CFG
+    );
+    assert.deepStrictEqual(
+        out.map(s => s.url),
+        ['http://4k', 'http://1080', 'http://720', 'http://hls', 'http://direct']
+    );
+});
+
+t('finalizeStreams : la langue préférée passe AVANT la qualité (tri principal)', () => {
+    const out = finalizeStreams(
+        [
+            makeStream({ title: 'x', url: 'http://vf-direct', quality: 'Direct', _langKey: 'vf' }),
+            makeStream({ title: 'x', url: 'http://vostfr-4k', quality: '4K', _langKey: 'vostfr' }),
+        ],
+        CFG
+    );
+    assert.deepStrictEqual(out.map(s => s.url), ['http://vf-direct', 'http://vostfr-4k']);
+});
+
+t('finalizeStreams : weakPlayer reste TOUJOURS en fin de liste même en 4K', () => {
+    const out = finalizeStreams(
+        [
+            makeStream({ title: 'w', url: 'http://weak', quality: '4K', _langKey: 'vf', _weakPlayer: true }),
+            makeStream({ title: 'g', url: 'http://direct', quality: 'Direct', _langKey: 'vf' }),
+        ],
+        CFG
+    );
+    assert.deepStrictEqual(out.map(s => s.url), ['http://direct', 'http://weak']);
+    assert.ok(/⚠$/.test(out[1].name), 'marqueur ⚠ sur le weak');
+});
+
+t('settings : défaut softMs = 10000 (v3.1.11 — 5 s coupait french-stream/french-manga)', () => {
+    delete globalThis.SCRAPER_SETTINGS;
+    const cfg = readConfig();
+    assert.strictEqual(cfg.softMs, 10000);
+});
+t('settings : softMs réglable 3000-15000 via SCRAPER_SETTINGS, hors bornes → défaut', () => {
+    globalThis.SCRAPER_SETTINGS = { softMs: '6000' };
+    assert.strictEqual(readConfig().softMs, 6000);
+    globalThis.SCRAPER_SETTINGS = { softMs: '1000' };
+    assert.strictEqual(readConfig().softMs, 10000);
+    delete globalThis.SCRAPER_SETTINGS;
 });
 
 console.log('\n— settings.js : réglages v3 —');

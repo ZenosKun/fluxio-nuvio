@@ -13,11 +13,14 @@
  *                      fstream, french-manga, bflix, papadustream, webflix,
  *                      french-stream, wookafr
  *   - detectAnime    : détection anime TMDB + routage des sources de recherche
- *   - earlyExit      : couper les sources bloquantes (échéance douce 5 s)
+ *   - earlyExit      : couper les sources bloquantes (échéance douce 10 s)
  *   - softMs         : échéance douce en ms (3000-15000, SCRAPER_SETTINGS
  *                      uniquement — non exposé dans l'UI, tunable avancé ;
- *                      5 s par défaut : Nuvio a son propre timeout de
- *                      réponse, rester court garantit l'affichage)
+ *                      10 s par défaut : à 5 s seule la source la plus
+ *                      rapide (webflix ≈0,8 s) avait le temps de répondre,
+ *                      10 s laisse french-stream (≈2-3 s) et french-manga
+ *                      (≈4-6 s) livrer aussi — reste sous le timeout de
+ *                      réponse de l'app Nuvio)
  *   - tmdbKey        : clé API TMDB personnelle
  *   - serverUrl      : serveur sestudio optionnel (repli)
  *   - timeoutSec     : budget réseau par requête (8-90 s, défaut 10 s)
@@ -88,13 +91,15 @@ export function readConfig() {
     // Échéance douce (tunable avancé, SCRAPER_SETTINGS uniquement) : Nuvio
     // attend la réponse COMPLÈTE du plugin puis l'affiche — si notre rendu
     // dépasse le timeout de l'app, l'utilisateur voit une erreur et ZÉRO
-    // flux. Défaut 5 s : les sources réactives livrent l'essentiel de leurs
-    // qualités en 1-4 s, seuls les sites bloqués sont coupés.
+    // flux. Défaut 10 s (v3.1.11) : à 5 s, seule webflix (≈0,8 s) avait le
+    // temps de répondre ; french-stream (≈2-3 s) et french-manga (≈4-6 s)
+    // étaient coupées avant de livrer — 10 s laisse plusieurs sources
+    // contribuer sans dépasser le timeout de réponse de l'app.
     const softSec = parseInt(String(s.softMs || ''), 10);
     const softMs =
         Number.isFinite(softSec) && softSec >= 3000 && softSec <= 15000
             ? softSec
-            : 5000;
+            : 10000;
 
     const useTranscode =
         s.useTranscode === undefined || s.useTranscode === null || s.useTranscode === ''

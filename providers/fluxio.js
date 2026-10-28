@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.10 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T15:13:35.132Z
+ * Fluxio v3.1.11 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T17:44:22.393Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -80,7 +80,7 @@ var __provider = (() => {
     const verifyLinks = boolOr(s.verifyLinks, true);
     const selfTest = boolOr(s.selfTest, true);
     const softSec = parseInt(String(s.softMs || ""), 10);
-    const softMs = Number.isFinite(softSec) && softSec >= 3e3 && softSec <= 15e3 ? softSec : 5e3;
+    const softMs = Number.isFinite(softSec) && softSec >= 3e3 && softSec <= 15e3 ? softSec : 1e4;
     const useTranscode = s.useTranscode === void 0 || s.useTranscode === null || s.useTranscode === "" ? false : String(s.useTranscode).toLowerCase() === "true";
     const sources = String(s.sources || s.sites || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).join(",");
     const timeoutSec = parseInt(String(s.timeoutSec || "10"), 10);
@@ -494,6 +494,20 @@ var __provider = (() => {
     if (!m) return "";
     return resolutionLabel(m[1]);
   }
+  function qualityRank(quality) {
+    const q = String(quality || "").toLowerCase();
+    if (/2160|4k/.test(q)) return 0;
+    const m = /(\d{3,4})\s*p/.exec(q);
+    if (m) {
+      const h = parseInt(m[1], 10);
+      if (h >= 1440) return 1;
+      if (h >= 1080) return 2;
+      if (h >= 720) return 3;
+      return 4;
+    }
+    if (/hls|auto/.test(q)) return 5;
+    return 6;
+  }
   function finalizeStreams(streams, cfg) {
     const order = cfg.fallbackLangs;
     const allowed = cfg.allowOtherLang ? order : order.slice(0, 1);
@@ -502,7 +516,9 @@ var __provider = (() => {
       return i === -1 ? 99 : i;
     };
     const relevant = (streams || []).filter((s) => s && s.url && allowed.indexOf(s._langKey) !== -1);
-    const sorted = relevant.slice().sort((a, b) => idxOf(a._langKey) - idxOf(b._langKey));
+    const sorted = relevant.slice().sort(
+      (a, b) => idxOf(a._langKey) - idxOf(b._langKey) || qualityRank(a.quality) - qualityRank(b.quality)
+    );
     const seen = {};
     const good = [];
     const weak = [];
@@ -5270,7 +5286,7 @@ var __provider = (() => {
   var SOFT_MS;
   var init_stopper = __esm({
     "src/core/stopper.js"() {
-      SOFT_MS = 5e3;
+      SOFT_MS = 1e4;
     }
   });
 
@@ -5666,7 +5682,7 @@ var __provider = (() => {
       init_stopper();
       init_stream();
       init_sestudio();
-      SOFT_MS2 = 5e3;
+      SOFT_MS2 = 1e4;
       DIRECT_ORDER = {
         webflix: 1,
         "french-stream": 2,
@@ -5839,7 +5855,7 @@ var __provider = (() => {
             type: "toggle",
             key: "earlyExit",
             label: "Couper les sources bloquantes (rapide)",
-            description: "Affiche TOUS les flux des sources qui r\xE9pondent \u2014 qualit\xE9s et hosts multiples inclus. Apr\xE8s 5 s, si au moins un flux est trouv\xE9, les sites bloqu\xE9s ne sont plus attendus. D\xE9sactiv\xE9 : attendre toutes les sources jusqu au budget.",
+            description: "Affiche TOUS les flux des sources qui r\xE9pondent \u2014 qualit\xE9s et hosts multiples inclus. Apr\xE8s 10 s, si au moins un flux est trouv\xE9, les sites bloqu\xE9s ne sont plus attendus ; les meilleures qualit\xE9s (4K, 1080p) sortent en t\xEAte de chaque langue. D\xE9sactiv\xE9 : attendre toutes les sources jusqu au budget.",
             defaultValue: true
           },
           {

@@ -7,7 +7,7 @@
  * On laisse donc toutes les sources répondantes livrer TOUT ce qu'elles ont.
  * Le stopper ne coupe alors que pour deux raisons :
  *
- *   - échéance douce (5 s) atteinte avec au moins 1 flux pertinent déjà
+ *   - échéance douce (10 s) atteinte avec au moins 1 flux pertinent déjà
  *     collecté : un site bloqué ou très lent ne retarde plus le rendu ;
  *   - budget dur (25 s, 18 s sans timers) épuisé : rendre ce qui existe, quoi qu'il arrive.
  *
@@ -16,9 +16,12 @@
  * alors de frontière d'arrêt aux boucles internes des sources.
  */
 
-const SOFT_MS = 5000;      // échéance douce : au-delà, ≥1 flux pertinent suffit
-                           // (5 s : Nuvio attend la réponse COMPLÈTE et l'app a
-                           //  son propre timeout — rester court est vital)
+const SOFT_MS = 10000;     // échéance douce : au-delà, ≥1 flux pertinent suffit
+                           // (v3.1.11 : à 5 s seule webflix ≈0,8 s répondait —
+                           // french-stream ≈2-3 s et french-manga ≈4-6 s étaient
+                           // coupées avant de livrer ; Nuvio attend la réponse
+                           // COMPLÈTE et l'app a son propre timeout — 10 s reste
+                           // sous la limite et laisse plusieurs sources livrer)
 
 export function createStopper({ startedAt, hardMs, softMs }) {
     const hard = hardMs > 0 ? hardMs : 25000;

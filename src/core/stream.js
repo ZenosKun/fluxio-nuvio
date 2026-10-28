@@ -4,7 +4,8 @@
  * Chaque source produit des flux internes annotés :
  *   { title, url, quality, language, headers, subtitles?, _langKey, _site }
  * Le cœur transforme ça en objets Nuvio propres (champs internes retirés),
- * triés par langue préférée puis dédupliqués par URL.
+ * triés par langue préférée puis, à langue égale, par qualité décroissante
+ * (v3.1.11 : 4K > 1080p > 720p > Auto (HLS) > Direct), et dédupliqués par URL.
  */
 
 const LANG_LABELS = {
@@ -87,7 +88,33 @@ export function qualityFromUrl(url) {
     return resolutionLabel(m[1]);
 }
 
-/** Tri par langue préférée puis dédoublonnage par URL, format Nuvio final.
+/**
+ * Rang de qualité pour le tri secondaire (v3.1.11) : plus petit = meilleure.
+ * Ordre : 4K (0) > 1440p (1) > 1080p (2) > 720p (3) > autres hauteurs (4)
+ * > Auto (HLS) (5) > Direct/inconnu (6). À langue égale, les meilleures
+ * qualités arrivent donc en tête de liste.
+ * @param {string} quality champ quality d'un flux interne (« 4K », « 1080p »,
+ *        « Auto (HLS) », « Direct »…)
+ * @returns {number} rang 0-6
+ */
+export function qualityRank(quality) {
+    const q = String(quality || '').toLowerCase();
+    if (/2160|4k/.test(q)) return 0;
+    const m = /(\d{3,4})\s*p/.exec(q);
+    if (m) {
+        const h = parseInt(m[1], 10);
+        if (h >= 1440) return 1;
+        if (h >= 1080) return 2;
+        if (h >= 720) return 3;
+        return 4; // 480p et en dessous
+    }
+    if (/hls|auto/.test(q)) return 5; // flux adaptatif : meilleure piste inconnue
+    return 6; // « Direct », vide, inconnu
+}
+
+/** Tri par langue préférée, à langue égale par qualité décroissante
+ * (4K > 1080p > 720p > Auto HLS > Direct), puis dédoublonnage par URL,
+ * format Nuvio final.
  * Les flux _weakPlayer (vidzy : segments refusés au lecteur natif) passent en
  * dernier avec un ⚠ — ils restent affichés mais ne bloquent plus la liste. */
 export function finalizeStreams(streams, cfg) {
@@ -98,7 +125,14 @@ export function finalizeStreams(streams, cfg) {
         return i === -1 ? 99 : i;
     };
     const relevant = (streams || []).filter(s => s && s.url && allowed.indexOf(s._langKey) !== -1);
-    const sorted = relevant.slice().sort((a, b) => idxOf(a._langKey) - idxOf(b._langKey));
+    // Tri principal = langue (préférence utilisateur, non négociable) ;
+    // tri secondaire = qualité décroissante (v3.1.11) : à langue égale, la
+    // 4K passe devant le 1080p, lui-même devant l'Auto HLS et le Direct.
+    const sorted = relevant.slice().sort(
+        (a, b) =>
+            idxOf(a._langKey) - idxOf(b._langKey) ||
+            qualityRank(a.quality) - qualityRank(b.quality)
+    );
 
     const seen = {};
     const good = [];
