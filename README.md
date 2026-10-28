@@ -53,7 +53,7 @@ Mesures réelles (bundle minifié, réseau vivant, `tests/test_e2e.cjs`, varianc
 | **French-Manga** | recherche titre TMDB | animes VOSTFR (VF) | spécialiste anime, numérotation absolue gérée |
 | **BFlix** | direct par tmdbId | VO + sous-titres FR/EN | infaillible sur l'identité du contenu |
 | **Papadustream** | direct par IMDb (TMDB→external_ids) | films/séries HLS multi-audio VF/VO | tokens signés, refresh automatique |
-| **Webflix** | direct par tmdbId | MP4/HLS VF + miroir VOSTFR anime | FastFlux, Discovery (1 appel = tous les épisodes), Zenix, Frembed |
+| **Webflix** | direct par tmdbId | MP4/HLS VF + VOSTFR via le flow Zenix réel (sources + play lang=vostfr) | FastFlux, Discovery (1 appel = tous les épisodes), Zenix, Frembed |
 
 Routage anime/film/série via TMDB (genre Animation + langue originale japonaise, mode strict). Désactivable (`detectAnime=false`) : comportement v2, toutes les sources pour tout.
 
@@ -123,7 +123,7 @@ Sans timer, aucune requête en cours ne peut être interrompue. Deux garde-fous 
 ## Diagnostic du « buffering » infini — v3.1.4
 
 - **Nom des flux** : `Fluxio · source · hôte` (l'app n'affiche pas le champ `title`), pour savoir quel hôte pose problème.
-- **Test des liens** (réglage « Tester les liens avant affichage », activé par défaut) : HLS en GET de la playlist, MP4 en HEAD, avec les en-têtes du flux, 8 s au maximum. Les liens morts (403/404/playlist invalide) passent en fin de liste avec ⚠.
+- **Test des liens** (réglage « Tester les liens avant affichage », activé par défaut) : HLS en GET de la playlist, MP4 en HEAD, avec les en-têtes du flux, 8 s au maximum, sonde approfondie (variante + 1er segment) sur les 8 premiers liens. Les liens prouvés morts (403/404, page HTML, segment refusé) sont **retirés** de la liste — plus de panneau « lien ne fonctionne pas » sur un lien affiché ; les liens « inconnus » (sonde interrompue, HEAD 405) restent affichés. La famille vidzy/luluvid/premium reste marquée ⚠ en fin de liste (TLS Chrome non imitable par le lecteur natif), le CDN tnmr.org (luluvid) est rejeté d'office.
 - **Logs** : chaque flux final est journalisé (`[stream] nom | qualité | langue | url | headers=…`) ; lance l'app depuis un terminal pour les voir, puis teste le lien avec `mpv --http-header-fields="Referer: …" "<url>"`.
 
 ## Mode diagnostic (activé par défaut jusqu'à nouvel ordre)

@@ -18,7 +18,7 @@
 
 import { fetchText as coreFetchText, fetchJson, resolveUrl } from '../utils/http.js';
 import { resolveEmbeds, providerFromEmbedUrl } from '../hosts/index.js';
-import { makeStream, composeTitle } from '../core/stream.js';
+import { makeStream, composeTitle, qualityFromUrl } from '../core/stream.js';
 
 const SITE = 'https://webflix.art';
 
@@ -57,45 +57,56 @@ async function run(ctx) {
     const e = parseInt(ctx.episode, 10) || 1;
 
     // 1. FastFlux / Discovery — MP4/HLS direct, le chemin le plus rapide.
+    //    La langue vient du champ API + marqueurs d'URL (gowaru detectLangRaw).
+    //    PAS de miroir VOSTFR en dur : gowaru substitue /animes/VF/→/VOSTFR/
+    //    pour les animés, mais le CDN ne l'expose pas systématiquement
+    //    (404 vérifié en live = panneau « lien ne fonctionne pas » chez
+    //    l'utilisateur). La VOSTFR passe par le flow ZENIX réel ci-dessous
+    //    (endpoints sources + play avec lang=vostfr — la voie du site).
+    let directPushed = false; // un flux direct (VF/VO…) est déjà poussé
     if (isTv) {
         const disc = await discovery(ctx.tmdbId, cfg, signal);
         const entry = disc && disc[s + '-' + e];
         if (entry && entry.url && typeof entry.url === 'string') {
             console.log('[webflix] discovery direct S' + s + 'E' + e);
             const langKey = await langKeyFor(ctx, entry.url, entry.language);
-            push(directStream(ctx, entry.url, 'Discovery', langKey, e));
-            // Miroir VOSTFR (CDN mongo-loko) : animés uniquement (chemin /animes/).
-            if (String(entry.url).indexOf('/animes/VF/') !== -1) {
-                const vost = buildVostfrMirror(entry.url);
-                if (vost) push(directStream(ctx, vost, 'Discovery', 'vostfr', e));
-            }
-            return;
+            push(directStream(ctx, entry.url, 'Discovery', langKey, e, entry.quality));
+            directPushed = true;
         }
-        const ff = await fastfluxEpisode(ctx.tmdbId, s, e, cfg, signal);
-        if (ff && ff.url) {
-            console.log('[webflix] fastflux direct S' + s + 'E' + e);
-            const langKey = await langKeyFor(ctx, ff.url, ff.language);
-            push(directStream(ctx, ff.url, 'FastFlux', langKey, e));
-            if (String(ff.url).indexOf('/animes/VF/') !== -1) {
-                const vost = buildVostfrMirror(ff.url);
-                if (vost) push(directStream(ctx, vost, 'FastFlux', 'vostfr', e));
+        if (!directPushed) {
+            const ff = await fastfluxEpisode(ctx.tmdbId, s, e, cfg, signal);
+            if (ff && ff.url) {
+                console.log('[webflix] fastflux direct S' + s + 'E' + e);
+                const langKey = await langKeyFor(ctx, ff.url, ff.language);
+                push(directStream(ctx, ff.url, 'FastFlux', langKey, e, ff.quality));
+                directPushed = true;
             }
-            return;
         }
     } else {
         const ff = await fastfluxMovie(ctx.tmdbId, cfg, signal);
         if (ff && ff.url) {
             console.log('[webflix] fastflux direct film');
             const langKey = await langKeyFor(ctx, ff.url, ff.language);
-            push(directStream(ctx, ff.url, 'FastFlux', langKey, 0));
-            return;
+            push(directStream(ctx, ff.url, 'FastFlux', langKey, 0, ff.quality));
+            directPushed = true;
         }
     }
+
+    // Chemin rapide : direct non-TV → les embeds n'apportent rien (FastFlux
+    // ne sert que du VF et Zenix movie VF/VOSTFR est déjà couvert plus bas
+    // seulement si l'utilisateur veut la VOSTFR — voir vostfrOnly).
+    if (directPushed && !isTv) return;
 
     if (shouldStop()) return;
 
     // 2. Embeds TMDB-only, résolus séquentiellement (arrêt via shouldStop).
-    const embeds = buildTmdbEmbeds(ctx.tmdbId, isTv, s, e);
+    //    Un VF direct est déjà poussé (série) → ne chercher QUE du VOSTFR
+    //    via Zenix lang=vostfr (la vraie voie du site, pas une route en dur).
+    const vostfrOnly = directPushed;
+    const embeds = buildTmdbEmbeds(ctx.tmdbId, isTv, s, e).filter(
+        emb => (vostfrOnly ? emb.lang === 'vostfr' : true)
+    );
+    if (vostfrOnly) console.log('[webflix] direct VF poussé → embeds VOSTFR uniquement (Zenix lang=vostfr)');
     let count = 0;
     let attempts = 0;
     for (const emb of embeds) {
@@ -294,48 +305,103 @@ async function resolveZenix(ctx, emb, push) {
         if (shouldStop()) return 0;
 
         const langParam = emb.lang === 'vostfr' ? 'vostfr' : 'vf';
-        let play = null;
+        // Gowaru zenixSources : l'API expose les sources DISPONIBLES par
+        // langue (s2 absent, s3 à tester…). Sans elle, un play « meilleur
+        // choix » peut viser une source absente → stream_url mort. On liste
+        // les IDs sélectionnables et on tente le meilleur + 2e (early-exit
+        // gowaru : selectable !== false && available !== false).
+        const attempts = [undefined]; // undefined = choix par défaut de l'API
         try {
-            play = await fetchJson(FLUXORA_ORIGIN + '/api/embed-player/play', {
-                method: 'POST',
-                timeout: 10000,
-                headers: {
-                    ...HEADERS,
-                    Referer: emb.url,
-                    Origin: FLUXORA_ORIGIN,
-                    'Content-Type': 'application/json',
-                },
-                body: { sid: sid, lang: langParam, embed_mobile: 0 },
+            const src = await fetchJson(
+                FLUXORA_ORIGIN + '/api/embed-player/sources?sid=' + encodeURIComponent(sid) +
+                    '&lang=' + encodeURIComponent(langParam),
+                {
+                    timeout: 10000,
+                    headers: { ...HEADERS, Referer: emb.url, Origin: FLUXORA_ORIGIN, Accept: 'application/json' },
+                    signal: signal,
+                }
+            );
+            const choices = src && Array.isArray(src.sources)
+                ? src.sources
+                : src && Array.isArray(src.choices)
+                    ? src.choices
+                    : [];
+            for (const c of choices) {
+                if (c && c.id && c.selectable !== false && c.available !== false && c.status !== 'absent') {
+                    if (attempts.indexOf(String(c.id)) === -1 && attempts.length < 3) attempts.push(String(c.id));
+                }
+            }
+        } catch (e) { /* liste indisponible → tentatives par défaut */ }
+
+        let count = 0;
+        for (const sourceId of attempts) {
+            if (shouldStop() || count >= MAX_STREAMS) break;
+            let play = null;
+            try {
+                const body = { sid: sid, lang: langParam, embed_mobile: 0 };
+                if (sourceId) body.source = sourceId;
+                play = await fetchJson(FLUXORA_ORIGIN + '/api/embed-player/play', {
+                    method: 'POST',
+                    timeout: 10000,
+                    headers: {
+                        ...HEADERS,
+                        Referer: emb.url,
+                        Origin: FLUXORA_ORIGIN,
+                        'Content-Type': 'application/json',
+                    },
+                    body: body,
+                    signal: signal,
+                });
+            } catch (e) {
+                play = null;
+            }
+            if (!play || play.ok !== true || !play.stream_url) continue;
+            if (shouldStop()) break;
+
+            // Gowaru zenixLangTag : la RÉPONSE fait foi (play.lang) — ne pas
+            // afficher « VOSTFR » pour un flux que l'API a servi en VF.
+            const langTag = zenixLangTag(play.lang, langParam);
+
+            // stream_url parfois directement jouable (HLS /v1/ pré-tokenisé).
+            if (/\.m3u8(\?|$)/i.test(play.stream_url) || /\.mp4(\?|$)/i.test(play.stream_url) ||
+                /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(play.stream_url)) {
+                push(directStream(ctx, play.stream_url, 'Zenix', langTag, ctx.mediaType === 'tv' ? ctx.episode : 0));
+                count++;
+                continue;
+            }
+
+            const pageRes = await coreFetchText(play.stream_url, {
+                timeout: TIMEOUTS.EMBED,
+                headers: { ...HEADERS, Accept: 'text/html,*/*', Referer: emb.url },
                 signal: signal,
             });
-        } catch (e) {
-            play = null;
-        }
-        if (!play || play.ok !== true || !play.stream_url) return 0;
-        if (shouldStop()) return 0;
+            const playerHtml = pageRes.text;
+            if (!playerHtml || isCfBlock(playerHtml)) continue;
 
-        const pageRes = await coreFetchText(play.stream_url, {
-            timeout: TIMEOUTS.EMBED,
-            headers: { ...HEADERS, Accept: 'text/html,*/*', Referer: emb.url },
-            signal: signal,
-        });
-        const playerHtml = pageRes.text;
-        if (!playerHtml || isCfBlock(playerHtml)) return 0;
-
-        const urls = extractStreamUrls(playerHtml, play.stream_url);
-        let count = 0;
-        for (const u of urls) {
-            if (count >= MAX_STREAMS || shouldStop()) break;
-            if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u)) {
-                push(directStream(ctx, u, 'Zenix', emb.lang, ctx.mediaType === 'tv' ? ctx.episode : 0));
-                count++;
+            const urls = extractStreamUrls(playerHtml, play.stream_url);
+            for (const u of urls) {
+                if (count >= MAX_STREAMS || shouldStop()) break;
+                if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u) ||
+                    /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(u)) {
+                    push(directStream(ctx, u, 'Zenix', langTag, ctx.mediaType === 'tv' ? ctx.episode : 0));
+                    count++;
+                }
+                // Les iframes Zenix pointent des hosts hors de notre gamme : skip.
             }
-            // Les iframes Zenix pointent des hosts hors de notre gamme : skip.
         }
         return count;
     } catch (e) {
         return 0;
     }
+}
+
+/** Gowaru zenixLangTag : la langue renvoyée par l'API play fait foi. */
+function zenixLangTag(playLang, requested) {
+    const l = String(playLang || requested || '').toLowerCase();
+    if (l.indexOf('vostfr') !== -1) return 'vostfr';
+    if (l === 'vf' || l === 'fr') return 'vf';
+    if (l === 'vo') return 'vo';
+    return String(requested || 'vf').toLowerCase();
 }
 
 /* ─────────────────────────────── helpers ───────────────────────────────── */
@@ -439,12 +505,6 @@ async function langKeyFor(ctx, url, apiLang) {
     return orig && orig !== 'fr' ? 'vo' : 'vf';
 }
 
-/** Miroir VOSTFR du CDN (animés uniquement) — port Gowaru buildVostfrMirror. */
-function buildVostfrMirror(url) {
-    const vost = String(url || '').replace('/animes/VF/', '/animes/VOSTFR/');
-    return vost !== url ? vost : null;
-}
-
 function langLabel(key) {
     return key === 'vostfr' ? 'VOSTFR' : key === 'vo' ? 'VO' : 'VF';
 }
@@ -461,8 +521,11 @@ function buildHeaders(referer, ua) {
  * Headers de lecture OBLIGATOIRES (v3.1.7, diagnostic buffering infini) : le
  * proxy FastFlux (falzey.lol/api/video_proxy.php) renvoie une 302 vers
  * Telegram/HTML sans Referer webflix.art — avec, il sert le vrai MP4 signé
- * (?ff=…). Le lecteur natif Nuvio applique ces en-têtes tels quels. */
-function directStream(ctx, url, source, langKey, episode) {
+ * (?ff=…). Le lecteur natif Nuvio applique ces en-têtes tels quels.
+ *
+ * Qualité (v3.1.8) : champ API du payload Discovery/FastFlux s'il est parlant
+ * (« Unknown » ignoré), sinon motif dans l'URL, sinon libellé technique. */
+function directStream(ctx, url, source, langKey, episode, apiQuality) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || '')) ? 'HLS' : 'MP4';
     return makeStream({
         title: composeTitle({
@@ -473,7 +536,7 @@ function directStream(ctx, url, source, langKey, episode) {
             lang: langLabel(langKey),
         }),
         url: url,
-        quality: kind === 'HLS' ? 'Auto (HLS)' : 'Direct',
+        quality: realQuality(apiQuality, url, kind),
         language: langLabel(langKey),
         headers: {
             'User-Agent': HEADERS['User-Agent'],
@@ -485,3 +548,13 @@ function directStream(ctx, url, source, langKey, episode) {
         _site: 'webflix',
     });
 }
+
+/** Qualité affichée : champ API parlant d'abord, sinon motif URL, sinon défaut. */
+function realQuality(apiQuality, url, kind) {
+    const api = String(apiQuality || '').trim();
+    if (api && !/^unknown$/i.test(api)) return api;
+    const q = qualityFromUrl(url);
+    if (q) return q;
+    return kind === 'HLS' ? 'Auto (HLS)' : 'Direct';
+}
+

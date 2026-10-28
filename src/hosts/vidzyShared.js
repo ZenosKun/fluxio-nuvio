@@ -16,7 +16,7 @@ import { base64Decode, utf8Decode } from '../utils/text.js';
 import { fetchJsonSafe } from '../utils/http.js';
 
 const INLINE_SRC_RE =
-    /src\s*:\s*\(function\(s\)\{([\s\S]{0,4000}?)\}\)\("([A-Za-z0-9+/=]+)"\)/;
+    /src\s*:\s*\(function\(s\)\{([\s\S]{0,4000}?)\}\)\("([A-Za-z0-9+/=\-_]+)"\)/;
 const ARRAY_KEY_RE = /k=\[([\d,]+)\]/g;
 const RAMP_KEY_RE =
     /\(\s*(0x[0-9a-fA-F]+|\d+)\s*\+\s*i\s*\*\s*(\d+)\s*(?:\+\s*[A-Za-z_$][\w$]*\s*)*\)\s*&\s*255/g;
@@ -39,7 +39,7 @@ const GATE_PARAMS = {
 };
 
 /** Somme des char codes du hostname, mod 256 (le « H » de l'embed). */
-function hostOffset(hostname) {
+export function hostOffset(hostname) {
     let total = 0;
     const h = String(hostname || '');
     for (let i = 0; i < h.length; i++) {
@@ -94,7 +94,8 @@ function reverse(s) {
  * @throws Error si aucun schéma connu ne décode
  */
 export function deobfuscateSrc(body, payloadB64, hostname) {
-    const raw = base64Decode(payloadB64);
+    // Payloads base64url (gowaru : '-'→'+', '_'→'/' avant atob).
+    const raw = base64Decode(String(payloadB64 || '').replace(/-/g, '+').replace(/_/g, '/'));
     let tried = 0;
 
     for (const ks of keystreams(body, raw.length, hostname)) {
@@ -103,6 +104,33 @@ export function deobfuscateSrc(body, payloadB64, hostname) {
             let decoded = '';
             for (let i = 0; i < source.length; i++) {
                 decoded += String.fromCharCode(source[i] ^ ks[i]);
+            }
+            for (let flip = 0; flip < 2; flip++) {
+                const candidate = flip === 0 ? decoded : reverse(decoded);
+                tried++;
+                if (candidate.indexOf('.m3u8') !== -1 && candidate.indexOf('/troll/') === -1) {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    // Gowaru (resolveFsvidVidzy, motif 2026+) : la clé est
+    // (0x3d + i*89 + H + BC) & 255 où BC = empreinte de layout mesurée par
+    // le navigateur (offsetWidth) — NON calculable côté plugin. Le corps
+    // décrit la rampe (seed/step constants) : on brute-force donc TOUS les
+    // décalages possibles (256 valeurs de BC), en octets directs et
+    // inversés (a = b.split('').reverse()). Une clé fausse ne produit
+    // jamais '.m3u8' → deviner est sans risque (coût : ~256 décodages de
+    // ~100 octets).
+    const host = hostOffset(hostname);
+    for (let BC = 0; BC < 256; BC++) {
+        const off = (0x3d + host + BC) & 255;
+        for (let srcFlip = 0; srcFlip < 2; srcFlip++) {
+            const source = srcFlip === 0 ? raw : reverseBytes(raw);
+            let decoded = '';
+            for (let i = 0; i < source.length; i++) {
+                decoded += String.fromCharCode(source[i] ^ ((off + i * 89) & 255));
             }
             for (let flip = 0; flip < 2; flip++) {
                 const candidate = flip === 0 ? decoded : reverse(decoded);

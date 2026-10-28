@@ -52,7 +52,7 @@ export function composeTitle({ site, episode, host, url, lang }) {
 /** Flux publics de test : si eux non plus ne se lisent pas, le problème est le lecteur, pas les sources. */
 export const TEST_STREAMS = [
     { name: 'Fluxio · TEST HLS (mux.dev)', title: 'Test HLS', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', quality: 'Auto (HLS)', language: 'TEST' },
-    { name: 'Fluxio · TEST MP4', title: 'Test MP4', url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4', quality: 'Direct', language: 'TEST' },
+    { name: 'Fluxio · TEST MP4 (google)', title: 'Test MP4', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', quality: 'Direct', language: 'TEST' },
 ];
 
 /** Nom affiché dans la liste (l'app n'affiche pas `title`) : Fluxio · source · hôte. */
@@ -68,6 +68,20 @@ function displayName(s) {
     });
     const host = rest.length > 1 ? rest[1] : '';
     return PROVIDER_NAME + (s._site ? ' · ' + s._site : '') + (host ? ' · ' + host : '') + (ep ? ' · ' + ep : '');
+}
+
+/** Libellé Nuvio d'une hauteur vidéo : 2160+ → 4K, sinon « <h>p ». */
+export function resolutionLabel(height) {
+    const h = parseInt(height, 10);
+    if (!(h > 0)) return '';
+    return h >= 2000 ? '4K' : h + 'p';
+}
+
+/** Motif de qualité dans une URL (…/1080/…, -1080p.mp4, _720p…) → « 1080p ». */
+export function qualityFromUrl(url) {
+    const m = /(?:^|[\/._\-])(2160|1440|1080|720|576|480|360|240)p?(?:[\/._\-]|$)/.exec(String(url || ''));
+    if (!m) return '';
+    return resolutionLabel(m[1]);
 }
 
 /** Tri par langue préférée puis dédoublonnage par URL, format Nuvio final.

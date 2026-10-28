@@ -7,7 +7,8 @@
 import assert from 'node:assert';
 import { buildPlan, kindOf, affinityOf } from '../src/core/plan.js';
 import { createStopper, raceEarlyExit, makeSourceShouldStop } from '../src/core/stopper.js';
-import { makeStream, finalizeStreams, composeTitle } from '../src/core/stream.js';
+import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, resolutionLabel } from '../src/core/stream.js';
+import { bestHlsQuality } from '../src/core/verify.js';
 import { readConfig } from '../src/utils/settings.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
 import { extractStreamUrls } from '../src/sources/webflix.js';
@@ -375,6 +376,37 @@ t('sans setTimeout : la course rend allDone', async () => {
 function mk(lang) {
     return makeStream({ title: 'x', url: 'http://' + Math.random().toString(36).slice(2), _langKey: lang });
 }
+
+/* ── v3.1.8 : qualité réelle (helpers partagés) ─────────────────────────── */
+t('resolutionLabel : hauteurs → libellés Nuvio', () => {
+    assert.strictEqual(resolutionLabel(2160), '4K');
+    assert.strictEqual(resolutionLabel(3840), '4K');
+    assert.strictEqual(resolutionLabel(1080), '1080p');
+    assert.strictEqual(resolutionLabel(720), '720p');
+    assert.strictEqual(resolutionLabel(480), '480p');
+    assert.strictEqual(resolutionLabel('x'), '');
+    assert.strictEqual(resolutionLabel(0), '');
+});
+t('qualityFromUrl : motifs URL courants', () => {
+    assert.strictEqual(qualityFromUrl('https://cdn.zen/animes/VF/S01/sao-S01-E01-1080p.mp4'), '1080p');
+    assert.strictEqual(qualityFromUrl('https://x.co/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4'), '1080p');
+    assert.strictEqual(qualityFromUrl('https://x.co/2160/movie.mkv'), '4K');
+    assert.strictEqual(qualityFromUrl('https://x.co/video-720p.mp4'), '720p');
+    assert.strictEqual(qualityFromUrl('https://x.co/series/S01/E01.mp4'), '');
+    assert.strictEqual(qualityFromUrl('https://x.co/h264/episode.mp4'), '');
+});
+t('bestHlsQuality : RESOLUTION max de la playlist maître', () => {
+    const master = '#EXTM3U\n' +
+        '#EXT-X-STREAM-INF:BANDWIDTH=1280000,RESOLUTION=640x360\n' +
+        'v360.m3u8\n' +
+        '#EXT-X-STREAM-INF:BANDWIDTH=4128000,RESOLUTION=1920x1080\n' +
+        'v1080.m3u8\n' +
+        '#EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=3840x2160\n' +
+        'v2160.m3u8\n';
+    assert.strictEqual(bestHlsQuality(master), '4K');
+    assert.strictEqual(bestHlsQuality('#EXTM3U\n#EXTINF:4.0,\nseg1.ts\n'), '');
+    assert.strictEqual(bestHlsQuality(''), '');
+});
 
 console.log(`\nRésultat : ${ok} OK, ${ko} échec(s)`);
 process.exit(ko ? 1 : 0);

@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.7 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T09:59:14.090Z
+ * Fluxio v3.1.8 — multi-sources FR pour Nuvio
+ * Built: 2026-10-28T10:59:12.358Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -403,7 +403,112 @@ var __provider = (() => {
     }
   });
 
+  // src/core/stream.js
+  function langLabel(langKey) {
+    return LANG_LABELS[langKey] || String(langKey || "").toUpperCase();
+  }
+  function makeStream(parts) {
+    const st = {
+      title: String(parts.title || "").trim() || "Flux",
+      url: String(parts.url || ""),
+      quality: parts.quality || "Direct",
+      language: parts.language || "",
+      headers: parts.headers && Object.keys(parts.headers).length ? parts.headers : void 0,
+      subtitles: parts.subtitles && parts.subtitles.length ? parts.subtitles : void 0,
+      _langKey: parts._langKey || "vo",
+      _site: parts._site || ""
+    };
+    if (parts._weakPlayer === true) st._weakPlayer = true;
+    return st;
+  }
+  function composeTitle({ site, episode, host, url, lang }) {
+    const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
+    const epLabel = episode > 0 ? " \xB7 E" + String(episode).padStart(2, "0") : "";
+    return `${site}${epLabel} \xB7 ${host} \xB7 ${kind} \xB7 ${langLabel(lang)}`;
+  }
+  function displayName(s) {
+    if (s.name) return s.name;
+    const parts = String(s.title || "").split(" \xB7 ");
+    let ep = "";
+    const rest = [];
+    parts.forEach(function(p, i) {
+      if (i > 0 && /^E\d{1,4}$/.test(p)) ep = p;
+      else rest.push(p);
+    });
+    const host = rest.length > 1 ? rest[1] : "";
+    return PROVIDER_NAME + (s._site ? " \xB7 " + s._site : "") + (host ? " \xB7 " + host : "") + (ep ? " \xB7 " + ep : "");
+  }
+  function resolutionLabel(height) {
+    const h = parseInt(height, 10);
+    if (!(h > 0)) return "";
+    return h >= 2e3 ? "4K" : h + "p";
+  }
+  function qualityFromUrl(url) {
+    const m = /(?:^|[\/._\-])(2160|1440|1080|720|576|480|360|240)p?(?:[\/._\-]|$)/.exec(String(url || ""));
+    if (!m) return "";
+    return resolutionLabel(m[1]);
+  }
+  function finalizeStreams(streams, cfg) {
+    const order = cfg.fallbackLangs;
+    const allowed = cfg.allowOtherLang ? order : order.slice(0, 1);
+    const idxOf = (key) => {
+      const i = order.indexOf(key);
+      return i === -1 ? 99 : i;
+    };
+    const relevant = (streams || []).filter((s) => s && s.url && allowed.indexOf(s._langKey) !== -1);
+    const sorted = relevant.slice().sort((a, b) => idxOf(a._langKey) - idxOf(b._langKey));
+    const seen = {};
+    const good = [];
+    const weak = [];
+    for (const s of sorted) {
+      if (seen[s.url]) continue;
+      seen[s.url] = true;
+      const clean = {
+        name: displayName(s),
+        title: s.title,
+        url: s.url,
+        quality: s.quality || "Direct",
+        language: s.language || LANG_LABELS[s._langKey] || String(s._langKey || "").toUpperCase()
+      };
+      if (s.headers && Object.keys(s.headers).length) clean.headers = s.headers;
+      if (s.subtitles && s.subtitles.length) clean.subtitles = s.subtitles;
+      (s._weakPlayer === true ? weak : good).push(clean);
+    }
+    return good.concat(
+      weak.map(function(w) {
+        if (!/ ⚠$/.test(w.name)) w.name += " \u26A0";
+        return w;
+      })
+    );
+  }
+  var LANG_LABELS, PROVIDER_NAME, TEST_STREAMS;
+  var init_stream = __esm({
+    "src/core/stream.js"() {
+      LANG_LABELS = {
+        vf: "VF",
+        vostfr: "VOSTFR",
+        vo: "VO"
+      };
+      PROVIDER_NAME = "Fluxio";
+      TEST_STREAMS = [
+        { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
+        { name: "Fluxio \xB7 TEST MP4 (google)", title: "Test MP4", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", quality: "Direct", language: "TEST" }
+      ];
+    }
+  });
+
   // src/core/verify.js
+  function bestHlsQuality(text) {
+    let best = 0;
+    const re = /RESOLUTION=(\d+)x(\d+)/gi;
+    let m;
+    const t = String(text || "");
+    while ((m = re.exec(t)) !== null) {
+      const h = parseInt(m[2], 10);
+      if (h > best) best = h;
+    }
+    return best ? resolutionLabel(best) : "";
+  }
   function looksHtml(text) {
     const t = String(text || "").trim();
     if (!t) return false;
@@ -439,7 +544,8 @@ var __provider = (() => {
           if (looksHtml(res2.text) || /text\/html/i.test(res2.contentType || "")) {
             return { ok: false, why: "redirection vers page HTML" };
           }
-          return { ok: true };
+          const q = qualityFromUrl(res2.finalUrl || st.url);
+          return { ok: true, quality: q };
         } catch (err) {
           const status = statusOf(err);
           if (status === 405 || status === 501) return { ok: null, why: "HEAD refus\xE9" };
@@ -456,6 +562,7 @@ var __provider = (() => {
       }
       let text = res.text || "";
       if (looksHtml(text)) return { ok: false, why: "redirection vers page HTML" };
+      const masterQ = bestHlsQuality(text);
       let base = res.finalUrl || st.url;
       const variant = nextHlsUri(text, "#EXT-X-STREAM-INF");
       if (variant) {
@@ -474,7 +581,7 @@ var __provider = (() => {
         base = v.finalUrl || vUrl;
       }
       const seg = nextHlsUri(text, "#EXTINF");
-      if (!seg || !deep) return { ok: true };
+      if (!seg || !deep) return { ok: true, quality: masterQ };
       const segUrl = resolveUrl(base, seg);
       try {
         const sres = yield fetchStatus(segUrl, {
@@ -485,7 +592,7 @@ var __provider = (() => {
         });
         if (sres.status >= 400) return { ok: false, why: "HTTP " + sres.status + " (segment)" };
         if (/text\/html/i.test(sres.contentType || "")) return { ok: false, why: "segment \u2192 page HTML" };
-        return { ok: true };
+        return { ok: true, quality: masterQ };
       } catch (err) {
         if (neutralErr(err)) return { ok: null, why: "sonde interrompue" };
         const status = statusOf(err);
@@ -521,32 +628,35 @@ var __provider = (() => {
     }
     return results.then(function(res) {
       const good = [];
-      const dead = [];
+      let dropped = 0;
       (streams || []).forEach(function(st, i) {
         const r = i < res.length ? res[i] : { ok: null };
         console.log(
           "[verify] " + (r.ok === true ? "OK " : r.ok === false ? "KO " : "?  ") + st.name + " \xB7 " + (r.why || "") + " \xB7 " + st.url
         );
+        if (r.quality) st.quality = r.quality;
         if (r.ok === false) {
-          const copy = Object.assign({}, st);
-          if (!/ ⚠$/.test(String(copy.name || ""))) copy.name = String(copy.name || "Fluxio") + " \u26A0";
-          dead.push(copy);
-        } else {
-          good.push(st);
+          dropped++;
+          return;
         }
+        good.push(st);
       });
-      return good.concat(dead);
+      if (dropped) {
+        console.log("[verify] " + dropped + " lien(s) mort(s) retir\xE9(s) de la liste");
+      }
+      return good;
     });
   }
   var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE;
   var init_verify = __esm({
     "src/core/verify.js"() {
       init_http();
+      init_stream();
       PROBE_MS = 4e3;
-      PROBE_MAX = 6;
+      PROBE_MAX = 10;
       PROBE_BUDGET_MS = 8e3;
       MIN_REMAINING_MS = 1500;
-      DEEP_MAX = 3;
+      DEEP_MAX = 8;
       SEGMENT_RANGE = "bytes=0-16383";
     }
   });
@@ -1950,7 +2060,7 @@ var __provider = (() => {
     return s.split("").reverse().join("");
   }
   function deobfuscateSrc(body, payloadB64, hostname) {
-    const raw = base64Decode(payloadB64);
+    const raw = base64Decode(String(payloadB64 || "").replace(/-/g, "+").replace(/_/g, "/"));
     let tried = 0;
     for (const ks of keystreams(body, raw.length, hostname)) {
       for (let srcFlip = 0; srcFlip < 2; srcFlip++) {
@@ -1958,6 +2068,24 @@ var __provider = (() => {
         let decoded = "";
         for (let i = 0; i < source.length; i++) {
           decoded += String.fromCharCode(source[i] ^ ks[i]);
+        }
+        for (let flip = 0; flip < 2; flip++) {
+          const candidate = flip === 0 ? decoded : reverse(decoded);
+          tried++;
+          if (candidate.indexOf(".m3u8") !== -1 && candidate.indexOf("/troll/") === -1) {
+            return candidate;
+          }
+        }
+      }
+    }
+    const host = hostOffset(hostname);
+    for (let BC = 0; BC < 256; BC++) {
+      const off = 61 + host + BC & 255;
+      for (let srcFlip = 0; srcFlip < 2; srcFlip++) {
+        const source = srcFlip === 0 ? raw : reverseBytes(raw);
+        let decoded = "";
+        for (let i = 0; i < source.length; i++) {
+          decoded += String.fromCharCode(source[i] ^ off + i * 89 & 255);
         }
         for (let flip = 0; flip < 2; flip++) {
           const candidate = flip === 0 ? decoded : reverse(decoded);
@@ -2149,11 +2277,11 @@ var __provider = (() => {
   }
   function resolveVidzyFamily(embedUrl, opts, variant) {
     return __async(this, null, function* () {
-      const referer = variant === "premium" ? "https://fsvid.lol/" : "https://vidzy.org/";
+      const embedRef = originOf2(embedUrl) + "/";
       const res = yield fetchText(embedUrl, {
         timeout: opts.timeout,
         headers: {
-          Referer: referer,
+          Referer: embedRef,
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Sec-Fetch-Dest": "iframe",
           "Sec-Fetch-Mode": "navigate",
@@ -2173,18 +2301,24 @@ var __provider = (() => {
       if (!streamUrl || streamUrl.indexOf(".m3u8") === -1) {
         throw new Error("source m3u8 introuvable dans l embed " + variant);
       }
+      if (streamUrl.indexOf("/troll/") !== -1) {
+        throw new Error("leurre troll/master.m3u8 d\xE9tect\xE9 (" + variant + ") \u2014 embed pivot\xE9");
+      }
+      const playRef = variant === "vidzy" ? "https://vidzy.live/" : "https://fsvid.lol/";
       let finalUrl = streamUrl;
       if (variant === "vidzy") {
-        finalUrl = yield withGateKey(res.text, streamUrl, referer, opts.timeout);
+        finalUrl = yield withGateKey(res.text, streamUrl, embedRef, opts.timeout);
       }
       return {
         url: finalUrl,
-        referer,
+        referer: playRef,
         ua: BROWSER_UA,
         subtitles: extractSubtitles(res.text, res.finalUrl),
-        // vidzy : segments refusés au player natif (TLS Chrome + gk=) même
-        // quand la playlist passe — stream.js rangera ce flux en dernier ⚠.
-        weakPlayer: variant === "vidzy"
+        // Famille vidzy entière (vidzy, luluvid, premium) : segments refusés
+        // au player natif (TLS Chrome + gk=) même quand la playlist passe —
+        // stream.js rangera ces flux en dernier ⚠ (luluvid inclus, buffering
+        // infini confirmé par l'utilisateur).
+        weakPlayer: variant === "vidzy" || variant === "luluvid" || variant === "premium"
       };
     });
   }
@@ -2279,6 +2413,9 @@ var __provider = (() => {
         if (!m) {
           lastError = host + " : pas de source m3u8";
           continue;
+        }
+        if (/tnmr\.org/i.test(m[1]) && !/cdn-tnmr\.org/i.test(m[1])) {
+          throw new Error("CDN tnmr.org : 403 v\xE9rifi\xE9 en live (gowaru) \u2014 flux non jouable, rejet");
         }
         return { url: m[1], referer: "https://luluvdo.com/", ua: BROWSER_UA };
       }
@@ -2403,6 +2540,8 @@ var __provider = (() => {
       ["premium", "premium"],
       ["luluvdo", "luluvid"],
       ["luluvid", "luluvid"],
+      ["lulust", "luluvid"],
+      // gowaru : 'lulust.com'.includes('lulu.') === false — hint dédié
       ["lulustream", "luluvid"],
       ["vidhsareup", "luluvid"],
       ["voe", "voe"],
@@ -2513,90 +2652,6 @@ var __provider = (() => {
         filmoon: resolveFilmoon,
         voe: resolveVoe
       };
-    }
-  });
-
-  // src/core/stream.js
-  function langLabel(langKey) {
-    return LANG_LABELS[langKey] || String(langKey || "").toUpperCase();
-  }
-  function makeStream(parts) {
-    const st = {
-      title: String(parts.title || "").trim() || "Flux",
-      url: String(parts.url || ""),
-      quality: parts.quality || "Direct",
-      language: parts.language || "",
-      headers: parts.headers && Object.keys(parts.headers).length ? parts.headers : void 0,
-      subtitles: parts.subtitles && parts.subtitles.length ? parts.subtitles : void 0,
-      _langKey: parts._langKey || "vo",
-      _site: parts._site || ""
-    };
-    if (parts._weakPlayer === true) st._weakPlayer = true;
-    return st;
-  }
-  function composeTitle({ site, episode, host, url, lang }) {
-    const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
-    const epLabel = episode > 0 ? " \xB7 E" + String(episode).padStart(2, "0") : "";
-    return `${site}${epLabel} \xB7 ${host} \xB7 ${kind} \xB7 ${langLabel(lang)}`;
-  }
-  function displayName(s) {
-    if (s.name) return s.name;
-    const parts = String(s.title || "").split(" \xB7 ");
-    let ep = "";
-    const rest = [];
-    parts.forEach(function(p, i) {
-      if (i > 0 && /^E\d{1,4}$/.test(p)) ep = p;
-      else rest.push(p);
-    });
-    const host = rest.length > 1 ? rest[1] : "";
-    return PROVIDER_NAME + (s._site ? " \xB7 " + s._site : "") + (host ? " \xB7 " + host : "") + (ep ? " \xB7 " + ep : "");
-  }
-  function finalizeStreams(streams, cfg) {
-    const order = cfg.fallbackLangs;
-    const allowed = cfg.allowOtherLang ? order : order.slice(0, 1);
-    const idxOf = (key) => {
-      const i = order.indexOf(key);
-      return i === -1 ? 99 : i;
-    };
-    const relevant = (streams || []).filter((s) => s && s.url && allowed.indexOf(s._langKey) !== -1);
-    const sorted = relevant.slice().sort((a, b) => idxOf(a._langKey) - idxOf(b._langKey));
-    const seen = {};
-    const good = [];
-    const weak = [];
-    for (const s of sorted) {
-      if (seen[s.url]) continue;
-      seen[s.url] = true;
-      const clean = {
-        name: displayName(s),
-        title: s.title,
-        url: s.url,
-        quality: s.quality || "Direct",
-        language: s.language || LANG_LABELS[s._langKey] || String(s._langKey || "").toUpperCase()
-      };
-      if (s.headers && Object.keys(s.headers).length) clean.headers = s.headers;
-      if (s.subtitles && s.subtitles.length) clean.subtitles = s.subtitles;
-      (s._weakPlayer === true ? weak : good).push(clean);
-    }
-    return good.concat(
-      weak.map(function(w) {
-        if (!/ ⚠$/.test(w.name)) w.name += " \u26A0";
-        return w;
-      })
-    );
-  }
-  var LANG_LABELS, PROVIDER_NAME, TEST_STREAMS;
-  var init_stream = __esm({
-    "src/core/stream.js"() {
-      LANG_LABELS = {
-        vf: "VF",
-        vostfr: "VOSTFR",
-        vo: "VO"
-      };
-      PROVIDER_NAME = "Fluxio";
-      TEST_STREAMS = [
-        { name: "Fluxio \xB7 TEST HLS (mux.dev)", title: "Test HLS", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", quality: "Auto (HLS)", language: "TEST" },
-        { name: "Fluxio \xB7 TEST MP4", title: "Test MP4", url: "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4", quality: "Direct", language: "TEST" }
-      ];
     }
   });
 
@@ -3417,41 +3472,41 @@ var __provider = (() => {
       const isTv = ctx.mediaType === "tv";
       const s = parseInt(ctx.season, 10) || 1;
       const e = parseInt(ctx.episode, 10) || 1;
+      let directPushed = false;
       if (isTv) {
         const disc = yield discovery(ctx.tmdbId, cfg, signal);
         const entry = disc && disc[s + "-" + e];
         if (entry && entry.url && typeof entry.url === "string") {
           console.log("[webflix] discovery direct S" + s + "E" + e);
           const langKey = yield langKeyFor(ctx, entry.url, entry.language);
-          push(directStream(ctx, entry.url, "Discovery", langKey, e));
-          if (String(entry.url).indexOf("/animes/VF/") !== -1) {
-            const vost = buildVostfrMirror(entry.url);
-            if (vost) push(directStream(ctx, vost, "Discovery", "vostfr", e));
-          }
-          return;
+          push(directStream(ctx, entry.url, "Discovery", langKey, e, entry.quality));
+          directPushed = true;
         }
-        const ff = yield fastfluxEpisode(ctx.tmdbId, s, e, cfg, signal);
-        if (ff && ff.url) {
-          console.log("[webflix] fastflux direct S" + s + "E" + e);
-          const langKey = yield langKeyFor(ctx, ff.url, ff.language);
-          push(directStream(ctx, ff.url, "FastFlux", langKey, e));
-          if (String(ff.url).indexOf("/animes/VF/") !== -1) {
-            const vost = buildVostfrMirror(ff.url);
-            if (vost) push(directStream(ctx, vost, "FastFlux", "vostfr", e));
+        if (!directPushed) {
+          const ff = yield fastfluxEpisode(ctx.tmdbId, s, e, cfg, signal);
+          if (ff && ff.url) {
+            console.log("[webflix] fastflux direct S" + s + "E" + e);
+            const langKey = yield langKeyFor(ctx, ff.url, ff.language);
+            push(directStream(ctx, ff.url, "FastFlux", langKey, e, ff.quality));
+            directPushed = true;
           }
-          return;
         }
       } else {
         const ff = yield fastfluxMovie(ctx.tmdbId, cfg, signal);
         if (ff && ff.url) {
           console.log("[webflix] fastflux direct film");
           const langKey = yield langKeyFor(ctx, ff.url, ff.language);
-          push(directStream(ctx, ff.url, "FastFlux", langKey, 0));
-          return;
+          push(directStream(ctx, ff.url, "FastFlux", langKey, 0, ff.quality));
+          directPushed = true;
         }
       }
+      if (directPushed && !isTv) return;
       if (shouldStop()) return;
-      const embeds = buildTmdbEmbeds(ctx.tmdbId, isTv, s, e);
+      const vostfrOnly = directPushed;
+      const embeds = buildTmdbEmbeds(ctx.tmdbId, isTv, s, e).filter(
+        (emb) => vostfrOnly ? emb.lang === "vostfr" : true
+      );
+      if (vostfrOnly) console.log("[webflix] direct VF pouss\xE9 \u2192 embeds VOSTFR uniquement (Zenix lang=vostfr)");
       let count = 0;
       let attempts = 0;
       for (const emb of embeds) {
@@ -3621,38 +3676,67 @@ var __provider = (() => {
         if (!sid) return 0;
         if (shouldStop()) return 0;
         const langParam = emb.lang === "vostfr" ? "vostfr" : "vf";
-        let play = null;
+        const attempts = [void 0];
         try {
-          play = yield fetchJson(FLUXORA_ORIGIN + "/api/embed-player/play", {
-            method: "POST",
-            timeout: 1e4,
-            headers: __spreadProps(__spreadValues({}, HEADERS2), {
-              Referer: emb.url,
-              Origin: FLUXORA_ORIGIN,
-              "Content-Type": "application/json"
-            }),
-            body: { sid, lang: langParam, embed_mobile: 0 },
+          const src = yield fetchJson(
+            FLUXORA_ORIGIN + "/api/embed-player/sources?sid=" + encodeURIComponent(sid) + "&lang=" + encodeURIComponent(langParam),
+            {
+              timeout: 1e4,
+              headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: emb.url, Origin: FLUXORA_ORIGIN, Accept: "application/json" }),
+              signal
+            }
+          );
+          const choices = src && Array.isArray(src.sources) ? src.sources : src && Array.isArray(src.choices) ? src.choices : [];
+          for (const c of choices) {
+            if (c && c.id && c.selectable !== false && c.available !== false && c.status !== "absent") {
+              if (attempts.indexOf(String(c.id)) === -1 && attempts.length < 3) attempts.push(String(c.id));
+            }
+          }
+        } catch (e) {
+        }
+        let count = 0;
+        for (const sourceId of attempts) {
+          if (shouldStop() || count >= MAX_STREAMS) break;
+          let play = null;
+          try {
+            const body = { sid, lang: langParam, embed_mobile: 0 };
+            if (sourceId) body.source = sourceId;
+            play = yield fetchJson(FLUXORA_ORIGIN + "/api/embed-player/play", {
+              method: "POST",
+              timeout: 1e4,
+              headers: __spreadProps(__spreadValues({}, HEADERS2), {
+                Referer: emb.url,
+                Origin: FLUXORA_ORIGIN,
+                "Content-Type": "application/json"
+              }),
+              body,
+              signal
+            });
+          } catch (e) {
+            play = null;
+          }
+          if (!play || play.ok !== true || !play.stream_url) continue;
+          if (shouldStop()) break;
+          const langTag = zenixLangTag(play.lang, langParam);
+          if (/\.m3u8(\?|$)/i.test(play.stream_url) || /\.mp4(\?|$)/i.test(play.stream_url) || /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(play.stream_url)) {
+            push(directStream(ctx, play.stream_url, "Zenix", langTag, ctx.mediaType === "tv" ? ctx.episode : 0));
+            count++;
+            continue;
+          }
+          const pageRes = yield fetchText(play.stream_url, {
+            timeout: TIMEOUTS.EMBED,
+            headers: __spreadProps(__spreadValues({}, HEADERS2), { Accept: "text/html,*/*", Referer: emb.url }),
             signal
           });
-        } catch (e) {
-          play = null;
-        }
-        if (!play || play.ok !== true || !play.stream_url) return 0;
-        if (shouldStop()) return 0;
-        const pageRes = yield fetchText(play.stream_url, {
-          timeout: TIMEOUTS.EMBED,
-          headers: __spreadProps(__spreadValues({}, HEADERS2), { Accept: "text/html,*/*", Referer: emb.url }),
-          signal
-        });
-        const playerHtml = pageRes.text;
-        if (!playerHtml || isCfBlock(playerHtml)) return 0;
-        const urls = extractStreamUrls(playerHtml, play.stream_url);
-        let count = 0;
-        for (const u of urls) {
-          if (count >= MAX_STREAMS || shouldStop()) break;
-          if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u)) {
-            push(directStream(ctx, u, "Zenix", emb.lang, ctx.mediaType === "tv" ? ctx.episode : 0));
-            count++;
+          const playerHtml = pageRes.text;
+          if (!playerHtml || isCfBlock(playerHtml)) continue;
+          const urls = extractStreamUrls(playerHtml, play.stream_url);
+          for (const u of urls) {
+            if (count >= MAX_STREAMS || shouldStop()) break;
+            if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u) || /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(u)) {
+              push(directStream(ctx, u, "Zenix", langTag, ctx.mediaType === "tv" ? ctx.episode : 0));
+              count++;
+            }
           }
         }
         return count;
@@ -3660,6 +3744,13 @@ var __provider = (() => {
         return 0;
       }
     });
+  }
+  function zenixLangTag(playLang, requested) {
+    const l = String(playLang || requested || "").toLowerCase();
+    if (l.indexOf("vostfr") !== -1) return "vostfr";
+    if (l === "vf" || l === "fr") return "vf";
+    if (l === "vo") return "vo";
+    return String(requested || "vf").toLowerCase();
   }
   function extractStreamUrls(html, baseUrl) {
     const out = [];
@@ -3744,10 +3835,6 @@ var __provider = (() => {
       return orig && orig !== "fr" ? "vo" : "vf";
     });
   }
-  function buildVostfrMirror(url) {
-    const vost = String(url || "").replace("/animes/VF/", "/animes/VOSTFR/");
-    return vost !== url ? vost : null;
-  }
   function langLabel2(key) {
     return key === "vostfr" ? "VOSTFR" : key === "vo" ? "VO" : "VF";
   }
@@ -3757,7 +3844,7 @@ var __provider = (() => {
     if (ua) headers["User-Agent"] = ua;
     return headers;
   }
-  function directStream(ctx, url, source, langKey, episode) {
+  function directStream(ctx, url, source, langKey, episode, apiQuality) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
     return makeStream({
       title: composeTitle({
@@ -3768,7 +3855,7 @@ var __provider = (() => {
         lang: langLabel2(langKey)
       }),
       url,
-      quality: kind === "HLS" ? "Auto (HLS)" : "Direct",
+      quality: realQuality(apiQuality, url, kind),
       language: langLabel2(langKey),
       headers: {
         "User-Agent": HEADERS2["User-Agent"],
@@ -3779,6 +3866,13 @@ var __provider = (() => {
       _langKey: langKey,
       _site: "webflix"
     });
+  }
+  function realQuality(apiQuality, url, kind) {
+    const api = String(apiQuality || "").trim();
+    if (api && !/^unknown$/i.test(api)) return api;
+    const q = qualityFromUrl(url);
+    if (q) return q;
+    return kind === "HLS" ? "Auto (HLS)" : "Direct";
   }
   var SITE, HEADERS2, TIMEOUTS, MAX_EMBEDS_TO_TRY, MAX_STREAMS, FLUXORA_ORIGIN, webflix_default;
   var init_webflix = __esm({
@@ -4520,7 +4614,7 @@ var __provider = (() => {
             type: "toggle",
             key: "verifyLinks",
             label: "Tester les liens avant affichage",
-            description: "Teste chaque lien (8 s max) : playlist HLS, puis variante et premier segment sur les 3 premiers liens \u2014 les liens morts ou refus\xE9s aux segments (403) passent en fin de liste avec \u26A0 au lieu de bloquer en \xAB buffering \xBB.",
+            description: "Teste chaque lien (8 s max) : playlist HLS, puis variante et premier segment sur les 8 premiers liens \u2014 les liens prouv\xE9s morts (403/404, page HTML, segment refus\xE9) sont RETIR\xC9S de la liste au lieu d\u2019afficher le panneau \xAB lien ne fonctionne pas \xBB (anti flux-qui-ne-lance-jamais). Les liens \xAB inconnus \xBB (sonde interrompue) restent affich\xE9s.",
             defaultValue: true
           },
           {

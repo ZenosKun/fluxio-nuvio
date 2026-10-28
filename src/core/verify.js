@@ -1,24 +1,31 @@
 /**
- * Test rapide des liens avant affichage (même idée que la sonde de sestudio).
+ * Test rapide des liens avant affichage (même idée que la sonde de sestudio,
+ * philosophie de gowaru-nuvio-providers : « anti flux-qui-ne-lance-jamais »).
  *
  * Un lien qui renvoie 403/404 ou une playlist invalide fait « buffering » à
- * l'infini dans le lecteur. On le détecte ici et on le range en fin de liste
- * avec un ⚠ au lieu de le proposer en premier.
+ * l'infini dans le lecteur. v3.1.8 : un lien que la sonde prouve mort est
+ * RETIRÉ de la liste (avant : rangé en fin avec un ⚠ — l'utilisateur le
+ * choisissait quand même et tombait sur le panneau « lien ne fonctionne
+ * pas »). Les liens « ? » (sonde interrompue, HEAD refusé…) sont conservés :
+ * on ne tue pas un lien pour notre faute.
  *
  * - HLS : GET de la playlist → doit contenir #EXTM3U. Sonde approfondie sur
- *   les 3 premiers liens : maître → 1re variante → 1er segment (GET Range
+ *   les 8 premiers liens : maître → 1re variante → 1er segment (GET Range
  *   16 Ko, corps JAMAIS lu). C'est là que les CDN à empreinte TLS Chrome
  *   (vidzy…) répondent 403 alors que la playlist passe — et un lien dont les
  *   segments sont refusés bufferise à l'infini malgré une playlist « OK ».
  * - MP4 : HEAD (jamais de GET : un serveur qui ignore Range enverrait le
  *   fichier entier). 405/501 = HEAD non supporté → « inconnu ». Une 200 qui
  *   répond du HTML (content-type ou corps) = redirection proxy → KO.
+ * - Qualité réelle (v3.1.8) : la RESOLUTION max de la playlist maître HLS
+ *   (« 1080p », « 4K »…) ou le motif de l'URL MP4 remplace les libellés
+ *   génériques (« Direct », « Auto (HLS) ») — Nuvio affiche ce champ tel quel.
  * - Redirections détectées : toute réponse HTML là où on attend un flux
  *   (playlist, variante, MP4) est un échec (ex. proxy → page captcha).
  * - Les en-têtes du flux (Referer, User-Agent…) sont envoyés tels quels.
  * - La chaîne profonde est bornée par le timeout de la sonde (chaque étape
  *   reçoit le temps RESTANT) : jamais plus long qu'avant.
- * - Limites : 6 liens max, 4 s par sonde, 8 s au total, jamais au-delà du
+ * - Limites : 10 liens max, 4 s par sonde, 8 s au total, jamais au-delà du
  *   budget restant. Sans timer (fetch bloquant) les sondes sont séquentielles.
  * - Neutralité : une sonde interrompue par le budget global ou le disjoncteur
  *   réseau n'est ni OK ni KO (« ? ») — on ne tue pas un lien pour notre faute.
@@ -27,13 +34,29 @@
  */
 
 import { fetchText, fetchStatus, resolveUrl } from '../utils/http.js';
+import { qualityFromUrl, resolutionLabel } from './stream.js';
 
 const PROBE_MS = 4000;
-const PROBE_MAX = 6;
+const PROBE_MAX = 10;
 const PROBE_BUDGET_MS = 8000;
 const MIN_REMAINING_MS = 1500;
-const DEEP_MAX = 3; // sonde approfondie (segment) : 3 premiers liens
+const DEEP_MAX = 8; // sonde approfondie (segment) : 8 premiers liens
 const SEGMENT_RANGE = 'bytes=0-16383';
+
+/** Meilleure résolution annoncée par une playlist maître HLS → « 1080p », « 4K »…
+ *  Une playlist média (sans #EXT-X-STREAM-INF) ne annonce pas de RESOLUTION
+ *  multi-variantes : on ignore alors (chaîne vide). */
+export function bestHlsQuality(text) {
+    let best = 0;
+    const re = /RESOLUTION=(\d+)x(\d+)/gi;
+    let m;
+    const t = String(text || '');
+    while ((m = re.exec(t)) !== null) {
+        const h = parseInt(m[2], 10);
+        if (h > best) best = h;
+    }
+    return best ? resolutionLabel(best) : '';
+}
 
 /** Corps qui ressemble à une page HTML plutôt qu'à un flux. */
 function looksHtml(text) {
@@ -78,7 +101,8 @@ export async function probeOne(st, timeout, deep) {
             if (looksHtml(res.text) || /text\/html/i.test(res.contentType || '')) {
                 return { ok: false, why: 'redirection vers page HTML' };
             }
-            return { ok: true };
+            const q = qualityFromUrl(res.finalUrl || st.url);
+            return { ok: true, quality: q };
         } catch (err) {
             const status = statusOf(err);
             if (status === 405 || status === 501) return { ok: null, why: 'HEAD refusé' };
@@ -97,6 +121,7 @@ export async function probeOne(st, timeout, deep) {
     }
     let text = res.text || '';
     if (looksHtml(text)) return { ok: false, why: 'redirection vers page HTML' };
+    const masterQ = bestHlsQuality(text);
 
     // Étape 2 (profonde) : playlist maître → première variante.
     let base = res.finalUrl || st.url;
@@ -119,7 +144,7 @@ export async function probeOne(st, timeout, deep) {
 
     // Étape 3 (profonde) : premier segment — statut seul, corps jamais lu.
     const seg = nextHlsUri(text, '#EXTINF');
-    if (!seg || !deep) return { ok: true };
+    if (!seg || !deep) return { ok: true, quality: masterQ };
 
     const segUrl = resolveUrl(base, seg);
     try {
@@ -131,7 +156,7 @@ export async function probeOne(st, timeout, deep) {
         });
         if (sres.status >= 400) return { ok: false, why: 'HTTP ' + sres.status + ' (segment)' };
         if (/text\/html/i.test(sres.contentType || '')) return { ok: false, why: 'segment → page HTML' };
-        return { ok: true };
+        return { ok: true, quality: masterQ };
     } catch (err) {
         if (neutralErr(err)) return { ok: null, why: 'sonde interrompue' };
         const status = statusOf(err);
@@ -144,7 +169,7 @@ export async function probeOne(st, timeout, deep) {
 /**
  * @param {Array} streams flux Nuvio finaux (name, url, headers…)
  * @param {{remainingMs: number}} opts
- * @returns {Promise<Array>} mêmes flux : vivants/inconnus d'abord, morts en fin avec ⚠
+ * @returns {Promise<Array>} flux sans les liens prouvés morts (vivant/inconnu)
  */
 export function verifyStreams(streams, opts) {
     const list = (streams || []).slice(0, PROBE_MAX);
@@ -175,22 +200,30 @@ export function verifyStreams(streams, opts) {
 
     return results.then(function (res) {
         const good = [];
-        const dead = [];
+        let dropped = 0;
         (streams || []).forEach(function (st, i) {
             const r = i < res.length ? res[i] : { ok: null };
             console.log(
                 '[verify] ' + (r.ok === true ? 'OK ' : r.ok === false ? 'KO ' : '?  ') +
                     st.name + ' · ' + (r.why || '') + ' · ' + st.url
             );
+            // Qualité réelle détectée par la sonde (RESOLUTION HLS / motif URL)
+            // : remplace le libellé générique « Direct » / « Auto (HLS) » —
+            // Nuvio affiche ce champ tel quel dans la liste.
+            if (r.quality) st.quality = r.quality;
             if (r.ok === false) {
-                const copy = Object.assign({}, st);
-                // Idempotent : un flux déjà marqué ⚠ (weak player) ne double pas.
-                if (!/ ⚠$/.test(String(copy.name || ''))) copy.name = String(copy.name || 'Fluxio') + ' ⚠';
-                dead.push(copy);
-            } else {
-                good.push(st);
+                // Gowaru, « anti flux-qui-ne-lance-jamais » : un lien prouvé
+                // mort (403/404, page HTML là où on attend un flux, segment
+                // refusé) n'est PAS affiché — servir produirait le panneau
+                // « lien ne fonctionne pas » ou un buffering infini.
+                dropped++;
+                return;
             }
+            good.push(st);
         });
-        return good.concat(dead);
+        if (dropped) {
+            console.log('[verify] ' + dropped + ' lien(s) mort(s) retiré(s) de la liste');
+        }
+        return good;
     });
 }

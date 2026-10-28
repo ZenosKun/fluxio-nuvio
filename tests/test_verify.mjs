@@ -41,7 +41,7 @@ for (const mode of ['timers', 'sans timers']) {
   globalThis.setTimeout = saved;
   console.log('— ' + mode);
   ok('flux vivants d\'abord', out[0].url.includes('good.m3u8') && out[1].url.includes('nohead.mp4'), out.map(s => s.name).join(' | '));
-  ok('403 / 404 / playlist invalide → ⚠ en fin', out.slice(2).every(s => s.name.endsWith(' ⚠')) && out.length === 5);
+  ok('403 / 404 / playlist HTML → RETIRÉS de la liste (gowaru anti flux-mort)', out.length === 2 && !out.some(s => s.url.includes('gone.mp4') || s.url.includes('dead.m3u8') || s.url.includes('html.m3u8')), out.map(s => s.name).join(' | '));
   ok('HEAD 405 → conservé (inconnu)', !out.find(s => s.url.includes('nohead')).name.endsWith('⚠'));
   ok('MP4 sondé en HEAD, HLS en GET', calls.filter(c => c[1].endsWith('.mp4')).every(c => c[0] === 'HEAD') && calls.filter(c => c[1].endsWith('.m3u8')).every(c => c[0] === 'GET'));
   ok('Referer du flux transmis à la sonde', calls.some(c => c[1].includes('good.m3u8') && c[2].Referer === 'https://p.example/'));
@@ -68,15 +68,15 @@ const gated = finalizeStreams([
   mk('W · master · HLS · VF', 'https://g.example/master.m3u8', 'webflix'),
 ], cfg);
 const outGate = await verifyStreams(gated, { remainingMs: 20000 });
-ok('playlist OK + segment 403 → ⚠ en fin (cas vidzy TLS)', outGate[0].url.includes('master.m3u8') && outGate[1].name.endsWith(' ⚠'), outGate.map(s => s.name).join(' | '));
+ok('playlist OK + segment 403 → RETIRÉ (cas vidzy TLS)', outGate.length === 1 && outGate[0].url.includes('master.m3u8'), outGate.map(s => s.name).join(' | '));
 
 const htmlSeg = finalizeStreams([mk('W · htmlseg · HLS · VF', 'https://t.example/htmlseg.m3u8', 'webflix')], cfg);
 const outHtmlSeg = await verifyStreams(htmlSeg, { remainingMs: 20000 });
-ok('segment content-type text/html → ⚠', outHtmlSeg[0].name.endsWith(' ⚠'), outHtmlSeg[0].name);
+ok('segment content-type text/html → RETIRÉ', outHtmlSeg.length === 0, JSON.stringify(outHtmlSeg.map(s => s.name)));
 
 const proxied = finalizeStreams([mk('W · proxy · MP4 · VF', 'https://t.example/proxy.mp4', 'webflix')], cfg);
 const outProxy = await verifyStreams(proxied, { remainingMs: 20000 });
-ok('MP4 HEAD 200 content-type text/html → ⚠ (redirection proxy)', outProxy[0].name.endsWith(' ⚠'), outProxy[0].name);
+ok('MP4 HEAD 200 content-type text/html → RETIRÉ (redirection proxy)', outProxy.length === 0, JSON.stringify(outProxy.map(s => s.name)));
 
 const weakFin = finalizeStreams([
   mk('FStream · uqload · HLS · VF', 'https://w.example/good.m3u8', 'fstream'),

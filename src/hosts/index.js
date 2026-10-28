@@ -10,16 +10,22 @@
  * Ordre de préférence (v3.1.7 — famille vidzy rétrogradée) :
  *   uqload → netu → filmoon → voe → luluvid → premium → vidzy
  *
- * Écart délibéré avec sestudio (qui met vidzy juste après uqload) : la famille
- * vidzy (vidzy.org, fsvid.lol) exige une empreinte TLS Chrome (IMPERSONATE_PROVIDERS
- * = {"vidzy"}) et une gate key gk= sur CHAQUE requête — le player natif de Nuvio
- * (ExoPlayer / Media Foundation) ne l'imitera pas et prend 403 sur les
- * variantes/segments, même quand notre probe Node voit #EXTM3U (diagnostic
- * buffering infini). premium et luluvid, même famille de CDN, sont rétrogradés
- * aussi : résolus seulement si pas mieux, et marqués par la sonde segment
- * (verify.js) quand leurs segments refusent le lecteur natif.
- * vidzy est en outre marqué weakPlayer : stream.js le range en dernier avec
- * un ⚠ même si la sonde passe (playlist servie, segments interdits).
+ * v3.1.8 — calque des références (retour utilisateur : « regardez comment
+ * sestudio et gowaru-nuvio-providers font au lieu d'inventer ») :
+ *   • gowaru resolvers.js (resolveWithTimeout, french-manga) : le CDN
+ *     tnmr.org — là où aboutissent TOUTES les résolutions luluvdo/lulust —
+ *     répond 403 en live QUEL QUE SOIT le Referer (luluvdo.com, page embed,
+ *     site source, Origin+Referer, sans) → « servir ces URL produit un flux
+ *     qui ne lance jamais » → on REJETTE (l'utilisateur bufferisait à
+ *     l'infini sur luluvid). Exception cdn-tnmr.org (sous-domaine légitime).
+ *   • gowaru resolveFsvidVidzy : le Referer d'embed se dérive du DOMAINE DE
+ *     L'EMBED lui-même (fsvid.lol → 403 sans), et le flux résolu exige
+ *     Referer https://vidzy.live/ (vidzy) / https://fsvid.lol/ (fsvid) —
+ *     vérifié live 200. On ne renvoie plus l'ancien Referer vidzy.org fixe.
+ *   • La famille vidzy/luluvid/premium reste weakPlayer (TLS Chrome non
+ *     imitable par le lecteur natif) : stream.js la range en dernier ⚠ —
+ *     mais un lien que la sonde prouve mort est maintenant RETIRÉ (verify.js,
+ *     philosophie gowaru « anti flux-qui-ne-lance-jamais »).
  */
 
 import { fetchText, fetchJson, fetchJsonSafe, resolveUrl } from '../utils/http.js';
@@ -83,11 +89,13 @@ async function resolveUqload(embedUrl, opts) {
 /* ───────────────────────────── vidzy / premium ─────────────────────────── */
 
 async function resolveVidzyFamily(embedUrl, opts, variant) {
-    const referer = variant === 'premium' ? 'https://fsvid.lol/' : 'https://vidzy.org/';
+    // Gowaru resolveFsvidVidzy : le Referer d'embed est le domaine de l'embed
+    // LUI-MÊME (fsvid.lol → 403 sans ; vidzy.* tolérant mais non cassé par).
+    const embedRef = originOf(embedUrl) + '/';
     const res = await fetchText(embedUrl, {
         timeout: opts.timeout,
         headers: {
-            Referer: referer,
+            Referer: embedRef,
             Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Sec-Fetch-Dest': 'iframe',
             'Sec-Fetch-Mode': 'navigate',
@@ -110,20 +118,31 @@ async function resolveVidzyFamily(embedUrl, opts, variant) {
     if (!streamUrl || streamUrl.indexOf('.m3u8') === -1) {
         throw new Error('source m3u8 introuvable dans l embed ' + variant);
     }
+    // Leurre anti-scraper (gowaru isKnownFakeDirectUrl) : s1.fsvid.lol/troll/
+    // master.m3u8 est IDENTIQUE pour tous les embeds et ne joue jamais.
+    if (streamUrl.indexOf('/troll/') !== -1) {
+        throw new Error('leurre troll/master.m3u8 détecté (' + variant + ') — embed pivoté');
+    }
+
+    // Referer de LECTURE (gowaru : vérifié live 200) : vidzy.* → vidzy.live,
+    // fsvid/autres → fsvid.lol. Le Referer d'embed ne marche PAS sur le CDN.
+    const playRef = variant === 'vidzy' ? 'https://vidzy.live/' : 'https://fsvid.lol/';
 
     let finalUrl = streamUrl;
     if (variant === 'vidzy') {
-        finalUrl = await withGateKey(res.text, streamUrl, referer, opts.timeout);
+        finalUrl = await withGateKey(res.text, streamUrl, embedRef, opts.timeout);
     }
 
     return {
         url: finalUrl,
-        referer: referer,
+        referer: playRef,
         ua: BROWSER_UA,
         subtitles: extractSubtitles(res.text, res.finalUrl),
-        // vidzy : segments refusés au player natif (TLS Chrome + gk=) même
-        // quand la playlist passe — stream.js rangera ce flux en dernier ⚠.
-        weakPlayer: variant === 'vidzy',
+        // Famille vidzy entière (vidzy, luluvid, premium) : segments refusés
+        // au player natif (TLS Chrome + gk=) même quand la playlist passe —
+        // stream.js rangera ces flux en dernier ⚠ (luluvid inclus, buffering
+        // infini confirmé par l'utilisateur).
+        weakPlayer: variant === 'vidzy' || variant === 'luluvid' || variant === 'premium',
     };
 }
 
@@ -225,6 +244,15 @@ async function resolveLuluvid(embedUrl, opts) {
         if (!packed) { lastError = host + ' : pas de player packé'; continue; }
         const m = /file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/.exec(unpack(packed));
         if (!m) { lastError = host + ' : pas de source m3u8'; continue; }
+        // Gowaru (resolvers.js, vérifié live 2026-10-10) : TOUTES les
+        // résolutions luluvdo/lulust aboutissent sur le CDN tnmr.org, qui
+        // répond 403 quel que soit le Referer (page embed, site source,
+        // Origin+Referer, sans) → servir = « flux qui ne lance jamais »
+        // (buffering infini confirmé par l'utilisateur). Rejet ici : le
+        // caller resolveEmbeds logue l'échec et tente le host suivant.
+        if (/tnmr\.org/i.test(m[1]) && !/cdn-tnmr\.org/i.test(m[1])) {
+            throw new Error('CDN tnmr.org : 403 vérifié en live (gowaru) — flux non jouable, rejet');
+        }
         return { url: m[1], referer: 'https://luluvdo.com/', ua: BROWSER_UA };
     }
     throw new Error('luluvid irresolvable (' + lastError + ')');
@@ -379,6 +407,7 @@ export function providerFromEmbedUrl(src) {
         ['premium', 'premium'],
         ['luluvdo', 'luluvid'],
         ['luluvid', 'luluvid'],
+        ['lulust', 'luluvid'], // gowaru : 'lulust.com'.includes('lulu.') === false — hint dédié
         ['lulustream', 'luluvid'],
         ['vidhsareup', 'luluvid'],
         ['voe', 'voe'],

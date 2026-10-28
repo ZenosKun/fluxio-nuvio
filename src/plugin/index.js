@@ -73,7 +73,7 @@ module.exports = {
             key: 'verifyLinks',
             label: 'Tester les liens avant affichage',
             description:
-                'Teste chaque lien (8 s max) : playlist HLS, puis variante et premier segment sur les 3 premiers liens — les liens morts ou refusés aux segments (403) passent en fin de liste avec ⚠ au lieu de bloquer en « buffering ».',
+                'Teste chaque lien (8 s max) : playlist HLS, puis variante et premier segment sur les 8 premiers liens — les liens prouvés morts (403/404, page HTML, segment refusé) sont RETIRÉS de la liste au lieu d’afficher le panneau « lien ne fonctionne pas » (anti flux-qui-ne-lance-jamais). Les liens « inconnus » (sonde interrompue) restent affichés.',
             defaultValue: true,
         },
         {
