@@ -52,7 +52,7 @@ export function composeTitle({ site, episode, host, url, lang }) {
 /** Flux publics de test : si eux non plus ne se lisent pas, le problème est le lecteur, pas les sources. */
 export const TEST_STREAMS = [
     { name: 'Fluxio · TEST HLS (mux.dev)', title: 'Test HLS', url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8', quality: 'Auto (HLS)', language: 'TEST' },
-    { name: 'Fluxio · TEST MP4 (google)', title: 'Test MP4', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', quality: 'Direct', language: 'TEST' },
+    { name: 'Fluxio · TEST MP4 (google)', title: 'Test MP4', url: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4', quality: 'Direct', language: 'TEST' },
 ];
 
 /** Nom affiché dans la liste (l'app n'affiche pas `title`) : Fluxio · source · hôte. */
