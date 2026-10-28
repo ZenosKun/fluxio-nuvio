@@ -24,6 +24,7 @@
 
 import { readConfig } from '../utils/settings.js';
 import { setHttpDeadline } from '../utils/http.js';
+import { verifyStreams } from './verify.js';
 import { getTmdbMeta } from '../meta/tmdb.js';
 import { rankCards } from '../utils/match.js';
 import { resolveSources } from './registry.js';
@@ -177,7 +178,21 @@ export async function extractStreams(tmdbId, mediaType, season, episode, options
         }
     }
 
-    const streams = finalizeStreams(collected, cfg);
+    let streams = finalizeStreams(collected, cfg);
+    if (cfg.verifyLinks && streams.length) {
+        try {
+            streams = await verifyStreams(streams, { remainingMs: budgetMs - (Date.now() - started) });
+        } catch (err) {
+            console.warn('[verify] ignoré : ' + (err && err.message ? err.message : err));
+        }
+    }
+    for (const st of streams) {
+        // Diagnostic : visible dans la console de l'app (lancée depuis un terminal).
+        console.log(
+            '[stream] ' + st.name + ' | ' + st.quality + ' | ' + st.language + ' | ' + st.url +
+                ' | headers=' + JSON.stringify(st.headers || {})
+        );
+    }
     console.log(
         '[core] Terminé : ' + streams.length + ' stream(s) en ' +
             (Date.now() - started) + 'ms' +

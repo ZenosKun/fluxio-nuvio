@@ -119,3 +119,9 @@ Sans timer, aucune requête en cours ne peut être interrompue. Deux garde-fous 
 - **Disjoncteur par hôte** : après un échec réseau/timeout, l'hôte est écarté 2 min — un domaine bloqué ne coûte qu'un timeout.
 
 `npm run test:blocking` simule ce runtime (horloge virtuelle). Avant 3.1.3, le provider imposait 60 s et écrasait le budget de 25 s.
+
+## Diagnostic du « buffering » infini — v3.1.4
+
+- **Nom des flux** : `Fluxio · source · hôte` (l'app n'affiche pas le champ `title`), pour savoir quel hôte pose problème.
+- **Test des liens** (réglage « Tester les liens avant affichage », activé par défaut) : HLS en GET de la playlist, MP4 en HEAD, avec les en-têtes du flux, 8 s au maximum. Les liens morts (403/404/playlist invalide) passent en fin de liste avec ⚠.
+- **Logs** : chaque flux final est journalisé (`[stream] nom | qualité | langue | url | headers=…`) ; lance l'app depuis un terminal pour les voir, puis teste le lien avec `mpv --http-header-fields="Referer: …" "<url>"`.

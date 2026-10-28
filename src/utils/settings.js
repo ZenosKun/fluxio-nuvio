@@ -74,6 +74,7 @@ export function readConfig() {
     // bloquées. Désactivable pour retrouver le comportement v2 (tout attendre,
     // budget complet).
     const earlyExit = boolOr(s.earlyExit, true);
+    const verifyLinks = boolOr(s.verifyLinks, true);
 
     // Échéance douce (tunable avancé, SCRAPER_SETTINGS uniquement) : Nuvio
     // attend la réponse COMPLÈTE du plugin puis l'affiche — si notre rendu
@@ -125,6 +126,7 @@ export function readConfig() {
         allowOtherLang,
         detectAnime,
         earlyExit,
+        verifyLinks,
         softMs,
         useTranscode,
         sources,

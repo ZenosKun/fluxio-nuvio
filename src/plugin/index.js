@@ -69,6 +69,14 @@ module.exports = {
             defaultValue: true,
         },
         {
+            type: 'toggle',
+            key: 'verifyLinks',
+            label: 'Tester les liens avant affichage',
+            description:
+                'Teste rapidement chaque lien (8 s max) : les liens morts passent en fin de liste avec ⚠ au lieu de bloquer en « buffering ».',
+            defaultValue: true,
+        },
+        {
             type: 'text',
             key: 'tmdbKey',
             label: 'Clé API TMDB personnelle (optionnel)',

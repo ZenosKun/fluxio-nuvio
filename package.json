@@ -1,6 +1,6 @@
 {
   "name": "fluxio-nuvio",
-  "version": "3.1.3",
+  "version": "3.1.4",
   "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (5 s), routage par type de contenu",
   "main": "src/plugin/index.js",
   "scripts": {
@@ -8,6 +8,7 @@
     "minify": "node build.js --minify",
     "test": "node tests/test_e2e.cjs",
     "test:offline": "node tests/test_units.mjs && node tests/test_fixtures.mjs",
+    "test:verify": "node tests/test_verify.mjs",
     "test:blocking": "node tests/sim_blocking.cjs providers/fluxio.js dead"
   },
   "keywords": [

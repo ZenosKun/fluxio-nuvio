@@ -1,5 +1,5 @@
 /**
- * Fluxio v3.1.3 — multi-sources FR pour Nuvio
+ * Fluxio v3.1.4 — multi-sources FR pour Nuvio
  * Built: 2026-10-28T07:06:37.276Z
  */
 var __provider = (() => {
@@ -77,6 +77,7 @@ var __provider = (() => {
     const allowOtherLang = boolOr(s.allowOtherLang, true);
     const detectAnime = boolOr(s.detectAnime, true);
     const earlyExit = boolOr(s.earlyExit, true);
+    const verifyLinks = boolOr(s.verifyLinks, true);
     const softSec = parseInt(String(s.softMs || ""), 10);
     const softMs = Number.isFinite(softSec) && softSec >= 3e3 && softSec <= 15e3 ? softSec : 5e3;
     const useTranscode = s.useTranscode === void 0 || s.useTranscode === null || s.useTranscode === "" ? false : String(s.useTranscode).toLowerCase() === "true";
@@ -92,6 +93,7 @@ var __provider = (() => {
       allowOtherLang,
       detectAnime,
       earlyExit,
+      verifyLinks,
       softMs,
       useTranscode,
       sources,
@@ -2329,6 +2331,12 @@ var __provider = (() => {
     const epLabel = episode > 0 ? " \xB7 E" + String(episode).padStart(2, "0") : "";
     return `${site}${epLabel} \xB7 ${host} \xB7 ${kind} \xB7 ${langLabel(lang)}`;
   }
+  function displayName(s) {
+    if (s.name) return s.name;
+    const parts = String(s.title || "").split(" \xB7 ");
+    const host = parts.length > 1 ? parts[1] : "";
+    return PROVIDER_NAME + (s._site ? " \xB7 " + s._site : "") + (host ? " \xB7 " + host : "");
+  }
   function finalizeStreams(streams, cfg) {
     const order = cfg.fallbackLangs;
     const allowed = cfg.allowOtherLang ? order : order.slice(0, 1);
@@ -2344,7 +2352,7 @@ var __provider = (() => {
       if (seen[s.url]) continue;
       seen[s.url] = true;
       const clean = {
-        name: s.name || PROVIDER_NAME,
+        name: displayName(s),
         title: s.title,
         url: s.url,
         quality: s.quality || "Direct",
@@ -3834,6 +3842,89 @@ var __provider = (() => {
     }
   });
 
+  // src/core/verify.js
+  const PROBE_MS = 4000;
+  const PROBE_MAX = 6;
+  const PROBE_BUDGET_MS = 8000;
+  const MIN_REMAINING_MS = 1500;
+
+  function probeOne(st, timeout) {
+      const isHls = /\.m3u8(\?|$)/i.test(String(st.url || ''));
+      const headers = Object.assign({ Accept: '*/*' }, st.headers || {});
+      return fetchText(st.url, {
+          method: isHls ? 'GET' : 'HEAD',
+          headers: headers,
+          timeout: timeout,
+      }).then(
+          function (res) {
+              if (isHls) {
+                  return /#EXTM3U/.test(res.text || '')
+                      ? { ok: true }
+                      : { ok: false, why: 'playlist HLS invalide' };
+              }
+              return { ok: true };
+          },
+          function (err) {
+              const status = err && err.status ? err.status : 0;
+              if (!isHls && (status === 405 || status === 501)) return { ok: null, why: 'HEAD refusé' };
+              return { ok: false, why: status ? 'HTTP ' + status : 'injoignable' };
+          }
+      );
+  }
+
+  /**
+   * @param {Array} streams flux Nuvio finaux (name, url, headers…)
+   * @param {{remainingMs: number}} opts
+   * @returns {Promise<Array>} mêmes flux : vivants/inconnus d'abord, morts en fin avec ⚠
+   */
+  function verifyStreams(streams, opts) {
+      const list = (streams || []).slice(0, PROBE_MAX);
+      const budget = Math.min(PROBE_BUDGET_MS, (opts && opts.remainingMs) - MIN_REMAINING_MS);
+      if (!list.length || !(budget >= 2000)) return Promise.resolve(streams);
+
+      const perProbe = Math.min(PROBE_MS, budget);
+      const deadline = Date.now() + budget;
+      let results;
+
+      if (typeof setTimeout === 'function') {
+          results = Promise.all(list.map(function (st) { return probeOne(st, perProbe); }));
+      } else {
+          // fetch bloquant : une sonde après l'autre, jamais au-delà de l'échéance
+          results = list.reduce(function (chain, st) {
+              return chain.then(function (acc) {
+                  if (Date.now() + MIN_REMAINING_MS > deadline) {
+                      acc.push({ ok: null, why: 'non testé' });
+                      return acc;
+                  }
+                  return probeOne(st, perProbe).then(function (r) {
+                      acc.push(r);
+                      return acc;
+                  });
+              });
+          }, Promise.resolve([]));
+      }
+
+      return results.then(function (res) {
+          const good = [];
+          const dead = [];
+          (streams || []).forEach(function (st, i) {
+              const r = i < res.length ? res[i] : { ok: null };
+              console.log(
+                  '[verify] ' + (r.ok === true ? 'OK ' : r.ok === false ? 'KO ' : '?  ') +
+                      st.name + ' · ' + (r.why || '') + ' · ' + st.url
+              );
+              if (r.ok === false) {
+                  const copy = Object.assign({}, st);
+                  copy.name = String(st.name || 'Fluxio') + ' ⚠';
+                  dead.push(copy);
+              } else {
+                  good.push(st);
+              }
+          });
+          return good.concat(dead);
+      });
+  }
+
   // src/core/orchestrator.js
   function extractStreams(_0, _1, _2, _3) {
     return __async(this, arguments, function* (tmdbId, mediaType, season2, episode, options = {}) {
@@ -3932,7 +4023,17 @@ var __provider = (() => {
           console.warn("[core] pont sestudio \xE9chou\xE9 : " + (err && err.message ? err.message : err));
         }
       }
-      const streams = finalizeStreams(collected, cfg);
+      let streams = finalizeStreams(collected, cfg);
+      if (cfg.verifyLinks && streams.length) {
+        try {
+          streams = yield verifyStreams(streams, { remainingMs: budgetMs - (Date.now() - started) });
+        } catch (err) {
+          console.warn("[verify] ignor\xE9 : " + (err && err.message ? err.message : err));
+        }
+      }
+      for (const st of streams) {
+        console.log("[stream] " + st.name + " | " + st.quality + " | " + st.language + " | " + st.url + " | headers=" + JSON.stringify(st.headers || {}));
+      }
       console.log(
         "[core] Termin\xE9 : " + streams.length + " stream(s) en " + (Date.now() - started) + "ms" + (outcome === "enough" ? " (anti-blocage : \xE9ch\xE9ance douce)" : "")
       );
@@ -4252,6 +4353,13 @@ var __provider = (() => {
             key: "earlyExit",
             label: "Couper les sources bloquantes (rapide)",
             description: "Affiche TOUS les flux des sources qui r\xE9pondent \u2014 qualit\xE9s et hosts multiples inclus. Apr\xE8s 5 s, si au moins un flux est trouv\xE9, les sites bloqu\xE9s ne sont plus attendus. D\xE9sactiv\xE9 : attendre toutes les sources jusqu au budget.",
+            defaultValue: true
+          },
+          {
+            type: "toggle",
+            key: "verifyLinks",
+            label: "Tester les liens avant affichage",
+            description: "Teste rapidement chaque lien (8 s max) : les liens morts passent en fin de liste avec \u26A0 au lieu de bloquer en \xAB buffering \xBB.",
             defaultValue: true
           },
           {

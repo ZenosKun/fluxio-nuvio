@@ -45,6 +45,14 @@ export function composeTitle({ site, episode, host, url, lang }) {
     return `${site}${epLabel} · ${host} · ${kind} · ${langLabel(lang)}`;
 }
 
+/** Nom affiché dans la liste (l'app n'affiche pas `title`) : Fluxio · source · hôte. */
+function displayName(s) {
+    if (s.name) return s.name;
+    const parts = String(s.title || '').split(' · ');
+    const host = parts.length > 1 ? parts[1] : '';
+    return PROVIDER_NAME + (s._site ? ' · ' + s._site : '') + (host ? ' · ' + host : '');
+}
+
 /** Tri par langue préférée puis dédoublonnage par URL, format Nuvio final. */
 export function finalizeStreams(streams, cfg) {
     const order = cfg.fallbackLangs;
@@ -62,7 +70,7 @@ export function finalizeStreams(streams, cfg) {
         if (seen[s.url]) continue;
         seen[s.url] = true;
         const clean = {
-            name: s.name || PROVIDER_NAME,
+            name: displayName(s),
             title: s.title,
             url: s.url,
             quality: s.quality || 'Direct',
