@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.14 — multi-sources FR pour Nuvio
- * Built: 2026-10-28T20:16:08.195Z
+ * Fluxio v3.1.15 — multi-sources FR pour Nuvio
+ * Built: 2026-10-29T10:52:54.006Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -4071,7 +4071,23 @@ var __provider = (() => {
           directPushed = true;
         }
       }
-      if (directPushed && !isTv) return;
+      if (!shouldStop()) {
+        const nx = yield resolveNexus(ctx, "vf");
+        if (nx) {
+          console.log("[webflix] nexus VF direct (" + (nx.quality || "Auto (HLS)") + ")");
+          push(nexusStream(ctx, nx, "vf"));
+          directPushed = true;
+        }
+      }
+      const prefIsVf = cfg.fallbackLangs[0] === "vf";
+      if (!prefIsVf && !shouldStop()) {
+        const nx = yield resolveNexus(ctx, "vostfr");
+        if (nx) {
+          console.log("[webflix] nexus " + nx.lang + " direct (" + (nx.quality || "Auto (HLS)") + ")");
+          push(nexusStream(ctx, nx, nx.lang === "vostfr" ? "vostfr" : "vf"));
+        }
+      }
+      if (directPushed && prefIsVf && !isTv) return;
       if (shouldStop()) return;
       const vostfrOnly = directPushed;
       const embeds = buildTmdbEmbeds(ctx.tmdbId, isTv, s, e).filter(
@@ -4137,6 +4153,134 @@ var __provider = (() => {
       } catch (e) {
         return null;
       }
+    });
+  }
+  function nexusQuery(kind, tmdbId, lang, season2, episode) {
+    let q = "kind=" + encodeURIComponent(kind) + "&tmdbId=" + encodeURIComponent(tmdbId) + "&lang=" + encodeURIComponent(lang);
+    if (kind === "serie") {
+      q += "&season=" + (parseInt(season2, 10) || 1) + "&episode=" + (parseInt(episode, 10) || 1);
+    }
+    return q;
+  }
+  function moviezToken(html) {
+    const m = /window\.P2\s*=\s*\{[^}]*?"t"\s*:\s*"([A-Za-z0-9._-]{40,300})"/.exec(String(html || ""));
+    return m ? m[1] : "";
+  }
+  function moviezLang(html) {
+    const m = /window\.P2\s*=\s*\{[^}]*?"lang"\s*:\s*"([a-zA-Z]{1,10})"/.exec(String(html || ""));
+    const l = String(m && m[1] || "").toLowerCase();
+    if (l.indexOf("vostfr") !== -1) return "vostfr";
+    return "vf";
+  }
+  function resolveNexus(ctx, langKey) {
+    return __async(this, null, function* () {
+      const { signal, shouldStop } = ctx;
+      const isTv = ctx.mediaType === "tv";
+      try {
+        const np = yield fetchJson(
+          SITE + "/api/player-embed/nexus-path?" + nexusQuery(isTv ? "serie" : "film", ctx.tmdbId, langKey, ctx.season, ctx.episode),
+          { timeout: 6e3, headers: HEADERS2, signal }
+        );
+        const path = np && typeof np.url === "string" ? np.url : "";
+        if (!/^\/api\/v\/[a-z]\/[A-Za-z0-9_-]+$/.test(path)) return null;
+        if (shouldStop()) return null;
+        const page = yield fetchText(SITE + path, {
+          timeout: 7e3,
+          headers: __spreadProps(__spreadValues({}, HEADERS2), { Accept: "text/html,*/*", Referer: SITE + "/" }),
+          signal
+        });
+        const html = String(page && page.text || "");
+        const token = moviezToken(html);
+        if (!token) return null;
+        const servedLang = moviezLang(html);
+        if (shouldStop()) return null;
+        const play = yield fetchJson(MOVIEZ_ORIGIN + "/api/v2/stream", {
+          method: "POST",
+          timeout: 6e3,
+          headers: __spreadProps(__spreadValues({}, HEADERS2), {
+            Referer: page && page.finalUrl || MOVIEZ_ORIGIN + "/",
+            Origin: MOVIEZ_ORIGIN,
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: { t: token },
+          signal
+        });
+        const hls = play && typeof play.hls === "string" ? play.hls : "";
+        if (!/^https:\/\//i.test(hls) || !/\.m3u8(\?|$)|\.mp4(\?|$)/i.test(hls)) return null;
+        if (shouldStop()) return null;
+        let url = hls;
+        let quality = "";
+        if (/\.m3u8(\?|$)/i.test(hls)) {
+          const swap = yield nexusMuxedSwap(hls, servedLang, signal);
+          if (swap) {
+            url = swap.url;
+            quality = swap.quality;
+          }
+        }
+        return { url, quality, lang: servedLang };
+      } catch (e) {
+        return null;
+      }
+    });
+  }
+  function nexusMuxedSwap(masterUrl, language, signal) {
+    return __async(this, null, function* () {
+      const readHeaders = {
+        Referer: MOVIEZ_ORIGIN + "/",
+        "User-Agent": HEADERS2["User-Agent"],
+        Accept: "*/*"
+      };
+      let masterText = "";
+      let finalUrl = masterUrl;
+      try {
+        const m = yield fetchText(masterUrl, {
+          timeout: 3500,
+          headers: readHeaders,
+          signal
+        });
+        masterText = String(m && m.text || "");
+        finalUrl = m && m.finalUrl || masterUrl;
+      } catch (e) {
+        return null;
+      }
+      if (masterText.indexOf("#EXTM3U") === -1) return null;
+      const swapUri = muxedVariantUrl(masterText, String(language || "").toUpperCase());
+      if (!swapUri) return null;
+      const muxUrl = resolveUrl(finalUrl, swapUri);
+      try {
+        const v = yield fetchText(muxUrl, {
+          timeout: 2500,
+          headers: readHeaders,
+          signal
+        });
+        if (!/#EXTINF/i.test(String(v && v.text || ""))) return null;
+      } catch (e) {
+        return null;
+      }
+      console.log("[webflix] nexus : variante mux\xE9e servie d\xE8s la r\xE9solution (anti \xE9cran-noir, " + String(language || "").toUpperCase() + ") : " + muxUrl);
+      return { url: muxUrl, quality: bestHlsQuality(masterText) };
+    });
+  }
+  function nexusStream(ctx, nx, langKey) {
+    return makeStream({
+      title: composeTitle({
+        site: "Webflix",
+        episode: ctx.mediaType === "tv" ? parseInt(ctx.episode, 10) || 0 : 0,
+        host: "Nexus",
+        url: nx.url,
+        lang: langLabel2(nx.lang === "vostfr" ? "vostfr" : langKey)
+      }),
+      url: nx.url,
+      quality: nx.quality || "Auto (HLS)",
+      language: langLabel2(nx.lang === "vostfr" ? "vostfr" : langKey),
+      headers: {
+        "User-Agent": HEADERS2["User-Agent"],
+        Accept: "*/*",
+        Referer: MOVIEZ_ORIGIN + "/"
+      },
+      _langKey: nx.lang === "vostfr" ? "vostfr" : langKey,
+      _site: "webflix"
     });
   }
   function buildTmdbEmbeds(tmdbId, isTv, s, e) {
@@ -4452,12 +4596,13 @@ var __provider = (() => {
     if (q) return q;
     return kind === "HLS" ? "Auto (HLS)" : "Direct";
   }
-  var SITE, HEADERS2, TIMEOUTS, MAX_EMBEDS_TO_TRY, MAX_STREAMS, FLUXORA_ORIGIN, FREMBED_HOSTS, webflix_default;
+  var SITE, HEADERS2, TIMEOUTS, MAX_EMBEDS_TO_TRY, MAX_STREAMS, FLUXORA_ORIGIN, MOVIEZ_ORIGIN, FREMBED_HOSTS, webflix_default;
   var init_webflix = __esm({
     "src/sources/webflix.js"() {
       init_http();
       init_hosts();
       init_stream();
+      init_verify();
       SITE = "https://webflix.art";
       HEADERS2 = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
@@ -4470,6 +4615,7 @@ var __provider = (() => {
       MAX_EMBEDS_TO_TRY = 5;
       MAX_STREAMS = 4;
       FLUXORA_ORIGIN = "https://fluxora.sbs";
+      MOVIEZ_ORIGIN = "https://api.moviez.ac";
       FREMBED_HOSTS = ["frembed.cyou", "frembed.bond", "frembed.site"];
       webflix_default = {
         id: "webflix",

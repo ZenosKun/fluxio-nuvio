@@ -2,13 +2,16 @@
  * Source Webflix — provider v3 (port du scraper Gowaru webflix.art, voie
  * mesurée la plus rapide : FastFlux direct en ~0,8 s).
  *
- * Périmètre retenu pour la v3 : uniquement les voies résolues par tmdbId —
- * zéro recherche par titre, zéro risque de mauvais matching :
+ * Périmètre : uniquement les voies résolues par tmdbId — zéro recherche par
+ * titre, zéro risque de mauvais matching :
  *
  *   1. FastFlux  : /api/fastflux?type=movie|episode&tmdb_id=… (MP4 direct)
  *   2. Discovery : /api/series-season-discovery?tmdb_id=… (1 appel = tous
  *                  les épisodes, clé exacte « S-E »)
- *   3. Embeds TMDB-only : Frembed (page → iframes → extracteurs d'hôtes
+ *   3. Nexus     : lecteur « Nexus » du site (v3.1.15, api.moviez.ac) —
+ *                  master HLS multi-variantes jusqu'à 1080p AVC ; la voie
+ *                  qualité là où FastFlux plafonne souvent au 720p
+ *   4. Embeds TMDB-only : Frembed (page → iframes → extracteurs d'hôtes
  *      locaux), Zenix/fluxora (flow SID/play dédié), Heiwastream, WWEmbed.
  *
  * La voie « search + fiches » de Gowaru est volontairement abandonnée :
@@ -19,6 +22,7 @@
 import { fetchText as coreFetchText, fetchJson, resolveUrl } from '../utils/http.js';
 import { resolveEmbeds, providerFromEmbedUrl } from '../hosts/index.js';
 import { makeStream, composeTitle, qualityFromUrl } from '../core/stream.js';
+import { bestHlsQuality, muxedVariantUrl } from '../core/verify.js';
 
 const SITE = 'https://webflix.art';
 
@@ -36,6 +40,15 @@ const MAX_EMBEDS_TO_TRY = 5;
 const MAX_STREAMS = 4;
 
 const FLUXORA_ORIGIN = 'https://fluxora.sbs';
+
+/** Lecteur « Nexus » du site (v3.1.15) : api.moviez.ac sert une HLS uqload-
+ * family MULTI-VARIANTES (vérifié live Fall 2 : 664x360 / 1328x720 /
+ * 1920x1040, tout en avc1 — la meilleure qualité du site, là où FastFlux
+ * plafonne au 720p du MP4 direct). Le master VF déclare en plus des pistes
+ * audio SÉPARÉES (EXT-X-MEDIA fr/en, mêmes symptômes écran-noir que les
+ * embeds uqload) → même remède v3.1.14 : variante muxée française servie
+ * dès la résolution. Le master VOSTFR (autre upload) est muxé simple. */
+const MOVIEZ_ORIGIN = 'https://api.moviez.ac';
 
 /* Frembed multi-domaines (v3.1.9) : l'API film.php/serie.php est vivante sur
  * plusieurs domaines (sonde live 2026-10-28 : .cyou 0,9 s / .bond 0,9 s /
@@ -99,14 +112,41 @@ async function run(ctx) {
         }
     }
 
-    // Chemin rapide : direct non-TV → les embeds n'apportent rien (FastFlux
-    // ne sert que du VF et Zenix movie VF/VOSTFR est déjà couvert plus bas
-    // seulement si l'utilisateur veut la VOSTFR — voir vostfrOnly).
-    if (directPushed && !isTv) return;
+    // 2. Nexus VF (v3.1.15) — le meilleur lecteur du site, résolu par
+    //    tmdbId : master multi-variantes jusqu'à 1080p AVC (FastFlux plafonne
+    //    souvent au 720p). FinalizeStreams classe ensuite 1080p devant 720p.
+    if (!shouldStop()) {
+        const nx = await resolveNexus(ctx, 'vf');
+        if (nx) {
+            console.log('[webflix] nexus VF direct (' + (nx.quality || 'Auto (HLS)') + ')');
+            push(nexusStream(ctx, nx, 'vf'));
+            directPushed = true;
+        }
+    }
+
+    // 3. Profil non-VF (préférence VOSTFR/VO) : les flux VF directs sont
+    //    filtrés par finalizeStreams — sans Nexus VOSTFR la source resterait
+    //    VIDE pour ce profil (bug latent du retour précoce film). La langue
+    //    affichée reste celle que la page moviez a réellement servie.
+    const prefIsVf = cfg.fallbackLangs[0] === 'vf';
+    if (!prefIsVf && !shouldStop()) {
+        const nx = await resolveNexus(ctx, 'vostfr');
+        if (nx) {
+            console.log('[webflix] nexus ' + nx.lang + ' direct (' + (nx.quality || 'Auto (HLS)') + ')');
+            push(nexusStream(ctx, nx, nx.lang === 'vostfr' ? 'vostfr' : 'vf'));
+        }
+    }
+
+    // Chemin rapide (film) : VF direct déjà poussé ET préférence VF → les
+    // embeds VF n'apportent rien (Zenix : page Livewire non extractible +
+    // H.265 à risque écran-noir ; Frembed : redirigé vers une SPA Next.js) —
+    // on garde la voie mesurée la plus rapide. Tout autre profil (VOSTFR,
+    // échec du direct) passe par les embeds ci-dessous comme avant.
+    if (directPushed && prefIsVf && !isTv) return;
 
     if (shouldStop()) return;
 
-    // 2. Embeds TMDB-only, résolus séquentiellement (arrêt via shouldStop).
+    // 4. Embeds TMDB-only, résolus séquentiellement (arrêt via shouldStop).
     //    Un VF direct est déjà poussé (série) → ne chercher QUE du VOSTFR
     //    via Zenix lang=vostfr (la vraie voie du site, pas une route en dur).
     const vostfrOnly = directPushed;
@@ -174,6 +214,183 @@ async function discovery(tmdbId, cfg, signal) {
     } catch (e) {
         return null;
     }
+}
+
+/* ──────────────────────────── Nexus (moviez) ───────────────────────────── */
+
+/** Query de l'API nexus-path (pur, testé) : kind=film|serie, tmdbId, lang,
+ * season/episode seulement en série — exactement les paramètres du site. */
+export function nexusQuery(kind, tmdbId, lang, season, episode) {
+    let q =
+        'kind=' + encodeURIComponent(kind) +
+        '&tmdbId=' + encodeURIComponent(tmdbId) +
+        '&lang=' + encodeURIComponent(lang);
+    if (kind === 'serie') {
+        q += '&season=' + (parseInt(season, 10) || 1) + '&episode=' + (parseInt(episode, 10) || 1);
+    }
+    return q;
+}
+
+/** Token lecture 15 min dans window.P2 = {"lang":…, "t":"…"} (pur, testé).
+ *  Le payload décodé confirme le contexte : movie|tmdb|0|0|vf|horodatage. */
+export function moviezToken(html) {
+    const m = /window\.P2\s*=\s*\{[^}]*?"t"\s*:\s*"([A-Za-z0-9._-]{40,300})"/.exec(String(html || ''));
+    return m ? m[1] : '';
+}
+
+/** Langue réellement servie par la page moviez (champ lang de window.P2) —
+ *  la réponse fait foi, comme zenixLangTag. */
+export function moviezLang(html) {
+    const m = /window\.P2\s*=\s*\{[^}]*?"lang"\s*:\s*"([a-zA-Z]{1,10})"/.exec(String(html || ''));
+    const l = String((m && m[1]) || '').toLowerCase();
+    if (l.indexOf('vostfr') !== -1) return 'vostfr';
+    return 'vf';
+}
+
+/**
+ * Lecteur « Nexus » du site (v3.1.15) — la voie qualité, là où FastFlux
+ * plafonne souvent au 720p du MP4 direct :
+ *
+ *   1. GET /api/player-embed/nexus-path?kind=film|serie&tmdbId=…&lang=…
+ *      → {url:"/api/v/n/<jeton>"} (le site valide ^\/api\/v\/[a-z]\/[A-Za-z0-9_-]+$)
+ *   2. GET webflix.art/api/v/n/<jeton> → 302 vers api.moviez.ac/{tmdb}
+ *      (série : /serie/{tmdb}/{s}/{e}) — le fetch suit la redirection.
+ *   3. La page player embarque window.P2 = {lang, subs, t} : jeton POST
+ *      valable 15 min.
+ *   4. POST api.moviez.ac/api/v2/stream {t} → {hls:"…master.m3u8?…"}.
+ *
+ * Le master est une HLS uqload-family : VF → variante muxée française servie
+ * dès la résolution (remède anti écran-noir v3.1.14, cf. uqloadMuxedSwap) ;
+ * VOSTFR → master muxé simple conservé.
+ * @returns {Promise<{url: string, quality: string, lang: string}|null>}
+ */
+async function resolveNexus(ctx, langKey) {
+    const { signal, shouldStop } = ctx;
+    const isTv = ctx.mediaType === 'tv';
+    try {
+        // 1. Chemin du lecteur Nexus pour ce titre/langue.
+        const np = await fetchJson(
+            SITE + '/api/player-embed/nexus-path?' +
+                nexusQuery(isTv ? 'serie' : 'film', ctx.tmdbId, langKey, ctx.season, ctx.episode),
+            { timeout: 6000, headers: HEADERS, signal: signal }
+        );
+        const path = np && typeof np.url === 'string' ? np.url : '';
+        if (!/^\/api\/v\/[a-z]\/[A-Za-z0-9_-]+$/.test(path)) return null;
+        if (shouldStop()) return null;
+
+        // 2. Page du player (302 Location: api.moviez.ac/…, suivie par fetch).
+        const page = await coreFetchText(SITE + path, {
+            timeout: 7000,
+            headers: { ...HEADERS, Accept: 'text/html,*/*', Referer: SITE + '/' },
+            signal: signal,
+        });
+        const html = String((page && page.text) || '');
+        const token = moviezToken(html);
+        if (!token) return null;
+        const servedLang = moviezLang(html);
+        if (shouldStop()) return null;
+
+        // 3. Lien HLS (valable 15 min — consommé immédiatement).
+        const play = await fetchJson(MOVIEZ_ORIGIN + '/api/v2/stream', {
+            method: 'POST',
+            timeout: 6000,
+            headers: {
+                ...HEADERS,
+                Referer: (page && page.finalUrl) || MOVIEZ_ORIGIN + '/',
+                Origin: MOVIEZ_ORIGIN,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: { t: token },
+            signal: signal,
+        });
+        const hls = play && typeof play.hls === 'string' ? play.hls : '';
+        if (!/^https:\/\//i.test(hls) || !/\.m3u8(\?|$)|\.mp4(\?|$)/i.test(hls)) return null;
+        if (shouldStop()) return null;
+
+        // 4. VF : le master déclare des pistes audio séparées (EXT-X-MEDIA) →
+        //    variante muxée française DÈS la résolution (anti écran-noir).
+        let url = hls;
+        let quality = '';
+        if (/\.m3u8(\?|$)/i.test(hls)) {
+            const swap = await nexusMuxedSwap(hls, servedLang, signal);
+            if (swap) {
+                url = swap.url;
+                quality = swap.quality;
+            }
+        }
+        return { url: url, quality: quality, lang: servedLang };
+    } catch (e) {
+        return null; // lecteur indisponible pour ce titre : FastFlux/embeds suffisent
+    }
+}
+
+/** Échange master → variante muxée de la langue (même contrat que
+ *  uqloadMuxedSwap, hosts/index.js — le master Nexus est de la même famille
+ *  uqload : EXT-X-MEDIA fr/en + variantes index-vN-aN.m3u8). Conservateur :
+ *  master conservé au moindre doute. @returns {Promise<{url,quality}|null>} */
+async function nexusMuxedSwap(masterUrl, language, signal) {
+    const readHeaders = {
+        Referer: MOVIEZ_ORIGIN + '/',
+        'User-Agent': HEADERS['User-Agent'],
+        Accept: '*/*',
+    };
+    let masterText = '';
+    let finalUrl = masterUrl;
+    try {
+        const m = await coreFetchText(masterUrl, {
+            timeout: 3500,
+            headers: readHeaders,
+            signal: signal,
+        });
+        masterText = String((m && m.text) || '');
+        finalUrl = (m && m.finalUrl) || masterUrl;
+    } catch (e) {
+        return null; // master injoignable ici : la sonde tranchera sur le lien
+    }
+    if (masterText.indexOf('#EXTM3U') === -1) return null;
+    const swapUri = muxedVariantUrl(masterText, String(language || '').toUpperCase());
+    if (!swapUri) return null;
+    const muxUrl = resolveUrl(finalUrl, swapUri);
+    try {
+        const v = await coreFetchText(muxUrl, {
+            timeout: 2500,
+            headers: readHeaders,
+            signal: signal,
+        });
+        // La variante doit être une playlist média triviale (segments) — pas
+        // une page HTML ni un master : c'est TOUT le but de l'échange.
+        if (!/#EXTINF/i.test(String((v && v.text) || ''))) return null;
+    } catch (e) {
+        return null; // variante injoignable ici : master conservé
+    }
+    console.log('[webflix] nexus : variante muxée servie dès la résolution (anti écran-noir, ' +
+        String(language || '').toUpperCase() + ') : ' + muxUrl);
+    return { url: muxUrl, quality: bestHlsQuality(masterText) };
+}
+
+/** Flux direct Nexus (HLS uqload-family). Referer moviez : contexte exact du
+ *  player du site (le CDN le tolère aussi absent — vérifié live). */
+function nexusStream(ctx, nx, langKey) {
+    return makeStream({
+        title: composeTitle({
+            site: 'Webflix',
+            episode: ctx.mediaType === 'tv' ? (parseInt(ctx.episode, 10) || 0) : 0,
+            host: 'Nexus',
+            url: nx.url,
+            lang: langLabel(nx.lang === 'vostfr' ? 'vostfr' : langKey),
+        }),
+        url: nx.url,
+        quality: nx.quality || 'Auto (HLS)',
+        language: langLabel(nx.lang === 'vostfr' ? 'vostfr' : langKey),
+        headers: {
+            'User-Agent': HEADERS['User-Agent'],
+            Accept: '*/*',
+            Referer: MOVIEZ_ORIGIN + '/',
+        },
+        _langKey: nx.lang === 'vostfr' ? 'vostfr' : langKey,
+        _site: 'webflix',
+    });
 }
 
 /* ────────────────────────── Embeds TMDB-only ───────────────────────────── */

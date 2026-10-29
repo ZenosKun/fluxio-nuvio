@@ -11,7 +11,7 @@ import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, qualityRank,
 import { bestHlsQuality, muxedVariantUrl } from '../src/core/verify.js';
 import { readConfig } from '../src/utils/settings.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
-import { extractStreamUrls } from '../src/sources/webflix.js';
+import { extractStreamUrls, nexusQuery, moviezToken, moviezLang } from '../src/sources/webflix.js';
 import { parseSearchResponse, parseNewsId } from '../src/sources/dle-common.js';
 
 let ok = 0;
@@ -682,6 +682,70 @@ t('muxedVariantUrl : LANGUAGE régional « fr-FR » → piste fr (v3.1.14)', () 
 t('muxedVariantUrl : repli NAME « Français » sans attribut LANGUAGE (v3.1.14)', () => {
     const noLang = UQ_MASTER.replace('LANGUAGE="fr",', '');
     assert.strictEqual(muxedVariantUrl(noLang, 'VF'), 'https://strm8.uqload.vc/hls2/x/dp_h/index-v1-a1.m3u8?t=TOK');
+});
+
+/* ── v3.1.15 : lecteur Nexus webflix (moviez.ac) — voie qualité ─────────── */
+
+/** Master RÉEL du lecteur Nexus (Fall 2 : Deadpoint, TMDB 1101412, VF —
+ *  capté live 2026-10-29 : 3 variantes avc1 l/n/h + pistes audio séparées
+ *  fr/en, variantes muxées a2 = anglais, même famille uqload). */
+const NEXUS_FALL2_MASTER = [
+    '#EXTM3U',
+    '',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="Français",LANGUAGE="fr",AUTOSELECT=YES,DEFAULT=YES,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/index-a1.m3u8?t=TOK"',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="English",LANGUAGE="en",AUTOSELECT=NO,DEFAULT=NO,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/index-a2.m3u8?t=TOK"',
+    '',
+    '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=587356,RESOLUTION=664x360,FRAME-RATE=23.974,CODECS="avc1.64001e,mp4a.40.2",VIDEO-RANGE=SDR,AUDIO="audio0"',
+    'https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/index-v1-a2.m3u8?t=TOK',
+    '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1526892,RESOLUTION=1328x720,FRAME-RATE=23.974,CODECS="avc1.640020,mp4a.40.2",VIDEO-RANGE=SDR,AUDIO="audio0"',
+    'https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_n/index-v1-a2.m3u8?t=TOK',
+    '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3848585,RESOLUTION=1920x1040,FRAME-RATE=23.974,CODECS="avc1.640028,mp4a.40.2",VIDEO-RANGE=SDR,AUDIO="audio0"',
+    'https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_h/index-v1-a2.m3u8?t=TOK',
+].join('\n');
+
+t('nexusQuery : film → kind/tmdbId/lang, sans season/episode', () => {
+    assert.strictEqual(nexusQuery('film', '1101412', 'vf', 0, 0), 'kind=film&tmdbId=1101412&lang=vf');
+});
+t('nexusQuery : série → season/episode ajoutés (int, défaut 1)', () => {
+    assert.strictEqual(
+        nexusQuery('serie', '94605', 'vostfr', 2, 7),
+        'kind=serie&tmdbId=94605&lang=vostfr&season=2&episode=7'
+    );
+    assert.strictEqual(
+        nexusQuery('serie', '94605', 'vf', 'x', 'x'),
+        'kind=serie&tmdbId=94605&lang=vf&season=1&episode=1'
+    );
+});
+t('moviezToken : window.P2 réel (film vf) extrait', () => {
+    const html = 'window.P2 = {"lang": "vf", "subs": 0, "t": "bW92aWV8MTEwMTQxMnwwfDB8dmZ8MTc5MzI3MTMwNA.yz9CkXZS9Ou9JVH1Y5HlIIY_"};';
+    assert.strictEqual(moviezToken(html), 'bW92aWV8MTEwMTQxMnwwfDB8dmZ8MTc5MzI3MTMwNA.yz9CkXZS9Ou9JVH1Y5HlIIY_');
+});
+t('moviezToken : variante vostfr + token base64url (tiret/underscore)', () => {
+    const html = 'window.P2 = {"lang": "vostfr", "subs": 2, "t": "dHZ8OTQ2MDV8MXwxfHZmfDE3OTMyNzE0NzU.HFxHrJBeZiH1dgSy_BlahETO"};';
+    assert.strictEqual(moviezToken(html), 'dHZ8OTQ2MDV8MXwxfHZmfDE3OTMyNzE0NzU.HFxHrJBeZiH1dgSy_BlahETO');
+});
+t('moviezToken : page sans P2 / sans t → vide', () => {
+    assert.strictEqual(moviezToken('<html>shell livewire sans player</html>'), '');
+    assert.strictEqual(moviezToken('window.P2 = {"lang": "vf"};'), '');
+    assert.strictEqual(moviezToken(''), '');
+});
+t('moviezLang : la langue servie par la page fait foi', () => {
+    assert.strictEqual(moviezLang('window.P2 = {"lang": "vf", "t": "x"};'), 'vf');
+    assert.strictEqual(moviezLang('window.P2 = {"lang": "vostfr", "t": "x"};'), 'vostfr');
+    assert.strictEqual(moviezLang('<html>rien</html>'), 'vf'); // défaut conservateur
+});
+t('Nexus master Fall 2 (réel) : VF → variante muxée 1080p a1, token préservée', () => {
+    const u = muxedVariantUrl(NEXUS_FALL2_MASTER, 'VF');
+    assert.strictEqual(u, 'https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_h/index-v1-a1.m3u8?t=TOK');
+    // Et la qualité affichée dérive du même master : 1920x1040 → 1080p
+    assert.strictEqual(bestHlsQuality(NEXUS_FALL2_MASTER), '1080p');
+});
+t('Nexus master Fall 2 (réel) : VOSTFR → master conservé (variante simple muxée)', () => {
+    const vostMaster = NEXUS_FALL2_MASTER
+        .replace(/#EXT-X-MEDIA[^\r\n]*\n/g, '')
+        .replace(/,AUDIO="audio0"/g, '');
+    assert.strictEqual(muxedVariantUrl(vostMaster, 'VOSTFR'), '');
+    assert.strictEqual(bestHlsQuality(vostMaster), '1080p');
 });
 
 /* ── v3.1.10 : langue réelle bflix (audio muxé = langue originale) ──────── */
