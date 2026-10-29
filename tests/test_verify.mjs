@@ -125,6 +125,23 @@ globalThis.fetch = async (url, o = {}) => {
   // en quarantaine 2 min par le disjoncteur ; TOUT autre lien du même hôte
   // doit ensuite rester « ? » (non testé), jamais « KO » retiré.
   if (url.includes('netfail.mp4')) throw new Error('getaddrinfo ENOTFOUND h8.example');
+  // v3.1.17 — CDN mensonger derrière une chaîne de redirections (fastflux
+  // réel : cdn80 → proxy falzey.lol → URL signée ?ff=) : le HEAD aboutit à
+  // l'URL SIGNÉE (res.url), le goûtage doit partir de CETTE URL. Le buffer
+  // complet (moov faststart tkhd 1080) tient dans le Range de tête.
+  if (url.includes('signed.mp4')) {
+    const SIGNED = 'https://h10.example/signed.mp4?ff=1793291310.zAbCdEfG';
+    if (o.method === 'HEAD') return { status: 200, url: SIGNED, headers: h('text/html'), text: async () => '' };
+    const b = buildMp4(1080, { version: 0 });
+    return { status: 206, url: SIGNED, headers: h('text/html'), arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), text: async () => '' };
+  }
+  // v3.1.17 — timeout de NOTRE sonde (chaîne 3 sauts > 4 s sur device) :
+  // ni OK ni KO — le lien reste en liste (« ? »), jamais retiré.
+  if (url.includes('slowredirect.mp4')) {
+    const e = new Error('timeout réseau (4000 ms) : ' + url);
+    e.status = 0;
+    throw e;
+  }
   return { status: 200, url, text: async () => '' };
 };
 const cfg = { fallbackLangs: ['vf', 'vostfr', 'vo'], allowOtherLang: true };
@@ -259,6 +276,28 @@ ok('verify conserve le tri weak, ⚠ non doublé', outWeak[1].url.includes('w2.e
   const after = finalizeStreams([mk('W · même hôte · MP4 · VF', 'https://h8.example/autre.mp4', 'webflix')], cfg);
   const outAfter = await verifyStreams(after, { remainingMs: 20000 });
   ok('hôte en quarantaine (disjoncteur) → lien CONSERVÉ en « ? » (neutralité réparée)', outAfter.length === 1 && !outAfter[0].name.endsWith('⚠'), JSON.stringify(outAfter.map(s => s.name)));
+}
+
+// v3.1.17 — chaîne de redirections payée UNE fois : le goûtage qualité part
+// de l'URL FINALE du HEAD (res.finalUrl = URL signée après la chaîne 3 sauts
+// cdn80 → proxy falzey.lol → signé, 0,7-3,5 s mesurés live). Avant, le sniff
+// repartait de l'URL d'origine, repayait les 3 sauts, dépassait le budget de
+// sonde sur device → qualité jamais lue → « Direct » affiché (cas Fall 2).
+{
+  calls.length = 0;
+  const r = await probeOne({ url: 'https://h10.example/signed.mp4', headers: {} }, 6000, false);
+  ok('CDN mensonger + URL finale signée → conservé + qualité « 1080p »', r.ok === true && r.quality === '1080p', JSON.stringify(r));
+  const sniff = calls.find(c => c[0] === 'GET' && c[1].indexOf('?ff=') !== -1);
+  ok('goûtage émis vers l URL SIGNÉE (?ff=), pas l URL d origine', !!sniff, JSON.stringify(calls.map(c => c[0] + ' ' + c[1])));
+}
+// v3.1.17 — neutralité du TIMEOUT : notre échéance de sonde n est pas une
+// preuve de mort (chaîne fastflux 3 sauts > 4 s sur device mobile alors que
+// le lecteur finit par suivre la chaîne). Le lien reste en liste en « ? » —
+// complément du fix disjoncteur v3.1.16 qui ne couvrait pas le 1er probe.
+{
+  const slow = finalizeStreams([mk('W · fastflux lent · MP4 · VF', 'https://h11.example/slowredirect.mp4', 'webflix')], cfg);
+  const outSlow = await verifyStreams(slow, { remainingMs: 20000 });
+  ok('timeout réseau de la sonde → lien CONSERVÉ (« ? »), jamais retiré', outSlow.length === 1, JSON.stringify(outSlow.map(s => s.name)));
 }
 // v3.1.13 — anti-écran-noir uqload : le master multi-pistes (pistes audio
 // séparées + variantes MUXÉES -a2 anglais) est remplacé par la variante muxée

@@ -756,33 +756,75 @@ function buildHeaders(referer, ua) {
  * Nexus fixent leur qualité à la résolution (bestHlsQuality) — le MP4
  * FastFlux dépendait à 100 % de la sonde (best-effort, budget partagé 8 s,
  * échéance 4 s/flux) : sur le device elle est parfois coupée avant d'avoir
- * sniffé → le flux restait étiqueté « Direct ». 2,5 s max, échec silencieux
- * → '' (on n'invente jamais de libellé). Exportée pour les tests (fetch mocké). */
-export async function directMp4Quality(url) {
-    const PROBE_MS = 2500;
+ * sniffé → le flux restait étiqueté « Direct ». Échec silencieux
+ * → '' (on n'invente jamais de libellé). Exportée pour les tests (fetch mocké).
+ *
+ * v3.1.17 — pourquoi le timeout passe de 2,5 à 6 s : l'URL fastflux est une
+ * chaîne de 3 sauts (cdn80.zen-blk.store → 302 proxy falzey.lol/api/
+ * video_proxy.php → 302 URL signée ?ff=) — 0,7 à 3,5 s mesurés live depuis
+ * un datacenter, bien plus sur device mobile (3 handshakes TLS). À 2,5 s la
+ * sonde avortait avant d'avoir lu le tkhd → « Direct » AFFICHÉ malgré un
+ * buffer parfaitement lisible (cause racine du retour utilisateur). Et la
+ * requête de ciblage moov part de l'URL FINALE (res.finalUrl) : la chaîne
+ * n'est payée qu'une fois (1 saut au lieu de 3 pour les étapes suivantes).
+ *
+ * v3.1.17 bis — DEUX tentatives et hors gouverneur : sous la charge
+ * parallèle des sources, le TTFB du proxy falzey.lol spike (2-6 s vus) et
+ * une tentative unique, même longue, échoue parfois ; deux tentatives
+ * courtes réussissent presque toujours (la variance est du côté du proxy).
+ * La sonde passe _bypassGov : le disjoncteur 2 min déclenché par son propre
+ * timeout retirait à la 2e tentative sa chance de passer. Bornes : chaque
+ * tentative ≤ 5 s, l'ensemble plafonné à la part du flux dans l'échéance
+ * douce (softLeftMs, défaut 10 s — le gouverneur global 25/18 s reste le
+ * filet). Échec 2× → log de diagnostic + « Direct » inchangé (le lien reste
+ * vivant, la sonde de vérification retentera après la vague, réseau calme). */
+export async function directMp4Quality(url, opts) {
+    const softLeftMs = opts && Number(opts.softLeftMs) > 0 ? Number(opts.softLeftMs) : 0;
+    const first = Math.min(5000, Math.max(2000, softLeftMs > 0 ? softLeftMs - 1000 : 5000));
+    const second = softLeftMs > 0 ? Math.max(0, softLeftMs - first - 500) : 5000;
+    const probeOpts = ms => ({
+        method: 'GET',
+        headers: { Accept: '*/*', Referer: SITE + '/', Range: 'bytes=0-131071' },
+        timeout: ms,
+        _bypassGov: true,
+    });
+    let res;
     try {
-        const res = await fetchBytes(url, {
-            method: 'GET',
-            headers: { Accept: '*/*', Referer: SITE + '/', Range: 'bytes=0-131071' },
-            timeout: PROBE_MS,
-        });
+        res = await fetchBytes(url, probeOpts(first));
+    } catch (e1) {
+        if (second < 1500) {
+            console.log('[webflix] qualité MP4 : sonde avortée (' + (e1 && e1.message ? e1.message : e1) + ')');
+            return '';
+        }
+        try {
+            res = await fetchBytes(url, probeOpts(second));
+        } catch (e2) {
+            console.log('[webflix] qualité MP4 : sonde avortée 2× (' + (e2 && e2.message ? e2.message : e2) + ')');
+            return '';
+        }
+    }
+    try {
         const u8 = res.bytes;
         if (!u8 || !u8.length || bytesLookHtml(u8)) return '';
         const direct = mp4QualityLabel(mp4MaxHeight(u8));
         if (direct) return direct;
         // Moov non faststart : son début PILE après le mdat (v3.1.16) — le
-        // moov d'un long métrage dépasse 1 Mo, la queue seule n'y arriverait pas.
+        // moov d'un long métrage dépasse 1 Mo, la queue seule n'y arriverait
+        // pas. v3.1.17 : requête émise vers l'URL FINALE (signed) — la
+        // redirection est déjà suivie par la 1re requête.
+        const signed = res.finalUrl || url;
         const moovStart = mp4MoovStartOffset(u8);
         if (moovStart >= 0) {
             try {
-                const far = await fetchBytes(url, {
+                const far = await fetchBytes(signed, {
                     method: 'GET',
                     headers: {
                         Accept: '*/*',
                         Referer: SITE + '/',
                         Range: 'bytes=' + moovStart + '-' + (moovStart + 131071),
                     },
-                    timeout: PROBE_MS,
+                    timeout: 2500,
+                    _bypassGov: true,
                 });
                 const f8 = far.bytes;
                 if (f8 && f8.length && !bytesLookHtml(f8)) {
@@ -815,7 +857,11 @@ async function directStream(ctx, url, source, langKey, episode, apiQuality) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || '')) ? 'HLS' : 'MP4';
     let quality = realQuality(apiQuality, url, kind);
     if (quality === 'Direct') {
-        const q = await directMp4Quality(url);
+        // Part du flux dans l'échéance douce : la sonde qualité ne doit pas
+        // pousser le rendu au-delà (v3.1.17 — 2 tentatives plafonnées).
+        const softMs = ctx.cfg && Number(ctx.cfg.softMs) > 0 ? Number(ctx.cfg.softMs) : 10000;
+        const softLeftMs = Math.max(0, softMs - (Date.now() - (ctx.started || Date.now())));
+        const q = await directMp4Quality(url, { softLeftMs: softLeftMs });
         if (q) quality = q;
     }
     return makeStream({

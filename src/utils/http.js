@@ -240,24 +240,28 @@ export async function fetchText(url, options = {}) {
  * dimensions réelles) sans que le décodage UTF-8 ne corrompe les octets :
  * res.arrayBuffer quand le runtime l'expose, sinon encodage charCodeAt.
  * Un Range: bytes=0-131071 dans options.headers borne le téléchargement.
+ * _bypassGov (v3.1.17) : court-circuite le gouverneur (budget global +
+ * disjoncteur 2 min) — pour la sonde qualité qui porte ses PROPRES bornes
+ * (timeouts explicites, une requête et sa seconde chance) : un timeout de
+ * sonde mettait l'hôte en quarantaine et la 2e tentative se faisait jeter
+ * par le disjoncteur alors que la variance du proxy (falzey.lol) fait
+ * qu'une requête juste après réussit souvent là où la première a calé.
  * @returns {Promise<{bytes: Uint8Array, text: string, status: number, finalUrl: string, contentType: string}>}
  */
 export async function fetchBytes(url, options = {}) {
     const timeout = options.timeout || 20000;
     let out;
     try {
-        out = await raceFetch(
-            url,
-            {
-                method: options.method || 'GET',
-                headers: { ...DEFAULT_HEADERS, ...(options.headers || {}) },
-                body: options.body !== undefined ? options.body : undefined,
-                timeout: timeout,
-                _binary: true,
-            },
-            timeout,
-            won => won
-        );
+        const govOpts = {
+            method: options.method || 'GET',
+            headers: { ...DEFAULT_HEADERS, ...(options.headers || {}) },
+            body: options.body !== undefined ? options.body : undefined,
+            timeout: timeout,
+            _binary: true,
+        };
+        out = options._bypassGov === true
+            ? await raceFetchInner(url, govOpts, timeout, won => won)
+            : await raceFetch(url, govOpts, timeout, won => won);
     } catch (err) {
         if (err instanceof HttpError) throw err;
         throw new HttpError('réseau injoignable: ' + (err && err.message ? err.message : String(err)), 0, url);

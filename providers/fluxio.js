@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.16 — multi-sources FR pour Nuvio
- * Built: 2026-10-29T12:14:35.330Z
+ * Fluxio v3.1.17 — multi-sources FR pour Nuvio
+ * Built: 2026-10-29T12:57:46.756Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -280,18 +280,14 @@ var __provider = (() => {
       const timeout = options.timeout || 2e4;
       let out;
       try {
-        out = yield raceFetch(
-          url,
-          {
-            method: options.method || "GET",
-            headers: __spreadValues(__spreadValues({}, DEFAULT_HEADERS), options.headers || {}),
-            body: options.body !== void 0 ? options.body : void 0,
-            timeout,
-            _binary: true
-          },
+        const govOpts = {
+          method: options.method || "GET",
+          headers: __spreadValues(__spreadValues({}, DEFAULT_HEADERS), options.headers || {}),
+          body: options.body !== void 0 ? options.body : void 0,
           timeout,
-          (won) => won
-        );
+          _binary: true
+        };
+        out = options._bypassGov === true ? yield raceFetchInner(url, govOpts, timeout, (won) => won) : yield raceFetch(url, govOpts, timeout, (won) => won);
       } catch (err) {
         if (err instanceof HttpError) throw err;
         throw new HttpError("r\xE9seau injoignable: " + (err && err.message ? err.message : String(err)), 0, url);
@@ -725,10 +721,11 @@ var __provider = (() => {
       if (!hb || !hb.length || bytesLookHtml(hb)) return "";
       let q = mp4QualityLabel(mp4MaxHeight(hb));
       if (q) return q;
+      const signed = head && head.finalUrl || st.url;
       const moovStart = mp4MoovStartOffset(hb);
       if (moovStart >= 0) {
         try {
-          const res = yield fetchBytes(st.url, {
+          const res = yield fetchBytes(signed, {
             method: "GET",
             headers: Object.assign({}, headers, {
               Range: "bytes=" + moovStart + "-" + (moovStart + MOOV_RANGE_BYTES - 1),
@@ -744,14 +741,15 @@ var __provider = (() => {
         } catch (e) {
         }
       }
-      return mp4TailQuality(st, headers, left);
+      return mp4TailQuality(st, headers, left, signed);
     });
   }
-  function mp4TailQuality(st, headers, left) {
+  function mp4TailQuality(st, headers, left, baseUrl) {
     return __async(this, null, function* () {
+      const target = baseUrl || st.url;
       for (let i = 0; i < MOOV_TAIL_RANGES.length; i++) {
         try {
-          const res = yield fetchBytes(st.url, {
+          const res = yield fetchBytes(target, {
             method: "GET",
             headers: Object.assign({}, headers, { Range: MOOV_TAIL_RANGES[i], Accept: "*/*" }),
             timeout: Math.min(MOOV_MS, left())
@@ -835,7 +833,7 @@ var __provider = (() => {
     return "";
   }
   function neutralErr(err) {
-    return /budget épuisé|disjoncteur/.test(String(err && err.message || ""));
+    return /budget épuisé|disjoncteur|timeout réseau/.test(String(err && err.message || ""));
   }
   function probeOne(st, timeout, deep) {
     return __async(this, null, function* () {
@@ -849,7 +847,8 @@ var __provider = (() => {
           const res2 = yield fetchText(st.url, { method: "HEAD", headers, timeout });
           if (looksHtml(res2.text) || /text\/html/i.test(res2.contentType || "")) {
             try {
-              const sniff = yield fetchBytes(st.url, {
+              const sniffUrl = res2.finalUrl || st.url;
+              const sniff = yield fetchBytes(sniffUrl, {
                 method: "GET",
                 headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: "*/*" }),
                 timeout: Math.min(MOOV_MS, left())
@@ -4618,30 +4617,50 @@ var __provider = (() => {
     if (ua) headers["User-Agent"] = ua;
     return headers;
   }
-  function directMp4Quality(url) {
+  function directMp4Quality(url, opts) {
     return __async(this, null, function* () {
-      const PROBE_MS2 = 2500;
+      const softLeftMs = opts && Number(opts.softLeftMs) > 0 ? Number(opts.softLeftMs) : 0;
+      const first = Math.min(5e3, Math.max(2e3, softLeftMs > 0 ? softLeftMs - 1e3 : 5e3));
+      const second = softLeftMs > 0 ? Math.max(0, softLeftMs - first - 500) : 5e3;
+      const probeOpts = (ms) => ({
+        method: "GET",
+        headers: { Accept: "*/*", Referer: SITE + "/", Range: "bytes=0-131071" },
+        timeout: ms,
+        _bypassGov: true
+      });
+      let res;
       try {
-        const res = yield fetchBytes(url, {
-          method: "GET",
-          headers: { Accept: "*/*", Referer: SITE + "/", Range: "bytes=0-131071" },
-          timeout: PROBE_MS2
-        });
+        res = yield fetchBytes(url, probeOpts(first));
+      } catch (e1) {
+        if (second < 1500) {
+          console.log("[webflix] qualit\xE9 MP4 : sonde avort\xE9e (" + (e1 && e1.message ? e1.message : e1) + ")");
+          return "";
+        }
+        try {
+          res = yield fetchBytes(url, probeOpts(second));
+        } catch (e2) {
+          console.log("[webflix] qualit\xE9 MP4 : sonde avort\xE9e 2\xD7 (" + (e2 && e2.message ? e2.message : e2) + ")");
+          return "";
+        }
+      }
+      try {
         const u8 = res.bytes;
         if (!u8 || !u8.length || bytesLookHtml(u8)) return "";
         const direct = mp4QualityLabel(mp4MaxHeight(u8));
         if (direct) return direct;
+        const signed = res.finalUrl || url;
         const moovStart = mp4MoovStartOffset(u8);
         if (moovStart >= 0) {
           try {
-            const far = yield fetchBytes(url, {
+            const far = yield fetchBytes(signed, {
               method: "GET",
               headers: {
                 Accept: "*/*",
                 Referer: SITE + "/",
                 Range: "bytes=" + moovStart + "-" + (moovStart + 131071)
               },
-              timeout: PROBE_MS2
+              timeout: 2500,
+              _bypassGov: true
             });
             const f8 = far.bytes;
             if (f8 && f8.length && !bytesLookHtml(f8)) {
@@ -4661,7 +4680,9 @@ var __provider = (() => {
       const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
       let quality = realQuality(apiQuality, url, kind);
       if (quality === "Direct") {
-        const q = yield directMp4Quality(url);
+        const softMs = ctx.cfg && Number(ctx.cfg.softMs) > 0 ? Number(ctx.cfg.softMs) : 1e4;
+        const softLeftMs = Math.max(0, softMs - (Date.now() - (ctx.started || Date.now())));
+        const q = yield directMp4Quality(url, { softLeftMs });
         if (q) quality = q;
       }
       return makeStream({

@@ -33,6 +33,15 @@
  *   vidéo+audio, plus aucun groupe audio à négocier côté lecteur.
  * - Redirections détectées : toute réponse HTML là où on attend un flux
  *   (playlist, variante, MP4) est un échec (ex. proxy → page captcha).
+ * - v3.1.17 — chaîne de redirections payée UNE fois : fastflux/webflix est
+ *   une chaîne 3 sauts (cdn80.zen-blk.store → proxy falzey.lol → URL signée
+ *   ?ff=), 0,7 à 3,5 s mesurés live. Le goûtage qualité et les requêtes
+ *   suivantes (ciblage moov, suffix ranges de queue) partent de l'URL
+ *   FINALE de la première réponse (res.finalUrl) : 1 saut au lieu de 3 —
+ *   avant, le sniff repartait de l'URL d'origine, dépassait le budget de
+ *   sonde sur device et la qualité restait « Direct ». Un timeout de NOTRE
+ *   sonde (« timeout réseau ») devient neutre (« ? ») : ce n'est pas une
+ *   preuve de mort du lien.
  * - Les en-têtes du flux (Referer, User-Agent…) sont envoyés tels quels.
  * - La chaîne profonde est bornée par le timeout de la sonde (chaque étape
  *   reçoit le temps RESTANT) : jamais plus long qu'avant.
@@ -102,11 +111,17 @@ async function mp4FileQuality(st, headers, left, headRes) {
     if (!hb || !hb.length || bytesLookHtml(hb)) return '';
     let q = mp4QualityLabel(mp4MaxHeight(hb));
     if (q) return q;
+    // v3.1.17 : les requêtes suivantes partent de l'URL FINALE (redirections
+    // déjà suivies par la 1re requête). Chaîne fastflux mesurée live : 3 sauts
+    // (cdn80.zen-blk.store → proxy falzey.lol → URL signée ?ff=) pour 0,7 à
+    // 3,5 s — repayer la chaîne à chaque étape dépassait le budget de sonde
+    // sur device et laissait le flux étiqueté « Direct » malgré un tkhd lisible.
+    const signed = (head && head.finalUrl) || st.url;
     // Étape 2 : le moov non faststart commence pile après le mdat annoncé.
     const moovStart = mp4MoovStartOffset(hb);
     if (moovStart >= 0) {
         try {
-            const res = await fetchBytes(st.url, {
+            const res = await fetchBytes(signed, {
                 method: 'GET',
                 headers: Object.assign({}, headers, {
                     Range: 'bytes=' + moovStart + '-' + (moovStart + MOOV_RANGE_BYTES - 1),
@@ -126,7 +141,7 @@ async function mp4FileQuality(st, headers, left, headRes) {
         }
     }
     // Étape 3 : suffix ranges de queue (v3.1.12, layouts non canoniques).
-    return mp4TailQuality(st, headers, left);
+    return mp4TailQuality(st, headers, left, signed);
 }
 
 /**
@@ -140,10 +155,11 @@ async function mp4FileQuality(st, headers, left, headRes) {
  * mensonger, déjà tranché par le chemin « content-type »). Échec silencieux
  * → '' (on n'invente rien).
  */
-async function mp4TailQuality(st, headers, left) {
+async function mp4TailQuality(st, headers, left, baseUrl) {
+    const target = baseUrl || st.url; // v3.1.17 : URL finale si connue (1 saut)
     for (let i = 0; i < MOOV_TAIL_RANGES.length; i++) {
         try {
-            const res = await fetchBytes(st.url, {
+            const res = await fetchBytes(target, {
                 method: 'GET',
                 headers: Object.assign({}, headers, { Range: MOOV_TAIL_RANGES[i], Accept: '*/*' }),
                 timeout: Math.min(MOOV_MS, left()),
@@ -263,9 +279,15 @@ export function nextHlsUri(text, tag) {
     return '';
 }
 
-/** Erreur imputable à NOUS (budget global épuisé, disjoncteur) — pas au lien. */
+/** Erreur imputable à NOUS (budget global épuisé, disjoncteur, timeout de
+ *  notre sonde) — pas au lien. v3.1.17 ajoute « timeout réseau » : notre
+ *  échéance de course n'est pas une preuve de mort — la chaîne fastflux
+ *  mesure 0,7 à 3,5 s depuis un datacenter (3 sauts : CDN → proxy → URL
+ *  signée) et dépasse régulièrement nos 4 s sur device mobile, alors que le
+ *  lecteur, lui, finit par suivre la chaîne. Bug live constaté : FastFlux
+ *  retiré de la liste après un simple HEAD trop lent. */
 function neutralErr(err) {
-    return /budget épuisé|disjoncteur/.test(String((err && err.message) || ''));
+    return /budget épuisé|disjoncteur|timeout réseau/.test(String((err && err.message) || ''));
 }
 
 export async function probeOne(st, timeout, deep) {
@@ -294,7 +316,12 @@ export async function probeOne(st, timeout, deep) {
                 // moov/tkhd du même buffer → qualité réelle (« 1080p », « 4K »)
                 // même quand l'URL ne porte aucun motif de résolution.
                 try {
-                    const sniff = await fetchBytes(st.url, {
+                    // v3.1.17 : goûtage sur l'URL FINALE du HEAD (res.finalUrl
+                    // = URL signée après la chaîne 3 sauts déjà payée) — 1 saut
+                    // au lieu de 3, le sniff rentre dans le budget restant de
+                    // la sonde même sur device mobile.
+                    const sniffUrl = res.finalUrl || st.url;
+                    const sniff = await fetchBytes(sniffUrl, {
                         method: 'GET',
                         headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: '*/*' }),
                         timeout: Math.min(MOOV_MS, left()),

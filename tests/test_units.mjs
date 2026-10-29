@@ -640,8 +640,58 @@ const tA = async (name, fn) => {
                 arrayBuffer: async () => new ArrayBuffer(0),
             });
             assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/x.mp4'), '');
+            // Hôte distinct : une erreur réseau status 0 met l'hôte en
+            // quarantaine 2 min (disjoncteur) — ne pas empoisonner cdn80
+            // pour les tests suivants de ce processus.
             globalThis.fetch = async () => { throw new Error('réseau injoignable'); };
-            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/x.mp4'), '');
+            assert.strictEqual(await directMp4Quality('https://blackhole.example/movies/x.mp4'), '');
+        });
+        // v3.1.17 — chaîne de redirections payée UNE fois : la 1re réponse
+        // (206) porte l'URL FINALE (signée ?ff=) dans res.url → la requête de
+        // ciblage moov doit partir de CETTE URL, pas de l'URL d'origine
+        // (repayer la chaîne 3 sauts dépassait le timeout sur device).
+        await tA('directMp4Quality : URL finale (signée ?ff=) réutilisée pour le ciblage moov', async () => {
+            const SIGNED = 'https://cdn80.zen-blk.store/movies/Film-4K.mp4?ff=1793291310.zAbCdEfG';
+            const head = buildMp4MdatHead(3000000);
+            const moov = buildMp4Tail(1080, { version: 0 });
+            const urls = [];
+            globalThis.fetch = async (u, o = {}) => {
+                urls.push(u);
+                const rg = String((o.headers || {}).Range || '');
+                const bytes = b => ({
+                    status: 206,
+                    url: SIGNED,
+                    headers: { get: () => 'video/mp4' },
+                    arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
+                    text: async () => '',
+                });
+                if (rg === 'bytes=0-131071') return bytes(head);
+                if (rg === 'bytes=3000020-3131091') return bytes(moov);
+                return { status: 404, url: u, headers: { get: () => '' }, text: async () => '' };
+            };
+            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/Film-4K.mp4'), '1080p');
+            assert.ok(urls.length >= 2 && urls[1].indexOf('?ff=') !== -1,
+                'le ciblage doit partir de l URL signée finale, pas de l origine : ' + urls[1]);
+        });
+        // v3.1.17 — 2 tentatives : sous la charge parallèle, le TTFB du proxy
+        // falzey.lol spike — une 2e tentative juste après réussit souvent là
+        // où la 1re a calé (timeout). Le gouverneur ne doit PAS s'interposer
+        // (_bypassGov) : sa quarantaine 2 min retirait cette seconde chance.
+        await tA('directMp4Quality : 2e tentative après un échec réseau → « 1080p »', async () => {
+            let n = 0;
+            globalThis.fetch = async () => {
+                n++;
+                if (n === 1) throw new Error('timeout réseau (5000 ms) : https://cdn80.zen-blk.store/movies/Film-HD.mp4');
+                return mp4Resp(buildMp4(1080, { version: 0 }));
+            };
+            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/Film-HD.mp4'), '1080p');
+            assert.strictEqual(n, 2, 'la 2e tentative doit être émise');
+        });
+        await tA('directMp4Quality : échec 2× → chaîne vide (jamais de libellé inventé)', async () => {
+            let n = 0;
+            globalThis.fetch = async () => { n++; throw new Error('timeout réseau (5000 ms)'); };
+            assert.strictEqual(await directMp4Quality('https://blackhole.example/movies/x.mp4'), '');
+            assert.strictEqual(n, 2, 'exactement 2 tentatives');
         });
     } finally {
         globalThis.fetch = savedFetch;
@@ -724,6 +774,24 @@ t('mp4MaxHeight : QUEUE non faststart 1920×800 → scan scope → 1080', () => 
 t('mp4MaxHeight : 1280×536 crop scope d un 720 → 720p', () => {
     assert.strictEqual(mp4MaxHeight(buildMp4(536, { width: 1280 })), 720);
     assert.strictEqual(mp4QualityLabel(720), '720p');
+});
+
+/* ── v3.1.17 : buffer RÉEL fastflux (Fall 2, cdn80.zen-blk.store) ────────── */
+// 131 072 octets de tête captés live (Range bytes=0-131071, Referer
+// webflix.art) : ftyp(32 o) + moov de 6,3 Mo TRONQUÉ par le Range. Le tkhd
+// (1280×692, piste vidéo hdlr 'vide', box 92 o) vit à l'offset 160 — DANS le
+// buffer — mais le parcours strict échoue (moov puis trak tronqués) ; seul le
+// scan par signature le retrouve (ratio 1,85 → crop scope → bucket 720p).
+// C'est le cas utilisateur exact : la sonde lisait ce buffer puis affichait
+// « Direct » faute de temps (chaîne 3 sauts > timeout) et/ou de scan.
+import { readFileSync } from 'node:fs';
+t('mp4MaxHeight : buffer RÉEL fastflux Fall 2 (moov 6,3 Mo tronqué, tkhd @160) → 720p', () => {
+    const raw = readFileSync(new URL('./fixtures/fastflux_fall2_head.bin', import.meta.url));
+    const u8 = new Uint8Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+    assert.strictEqual(u8.length, 131072);
+    assert.strictEqual(bytesLookHtml(u8), false, 'le CDN livre bien du binaire, pas du HTML');
+    assert.strictEqual(mp4MaxHeight(u8), 720);
+    assert.strictEqual(mp4QualityLabel(mp4MaxHeight(u8)), '720p');
 });
 
 /* ── v3.1.12 : crops scope côté HLS (bestHlsQuality, importé en tête) ───── */
