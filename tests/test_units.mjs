@@ -551,6 +551,103 @@ t('mp4MaxHeight : candidat tkhd farci dans du mdat mais boîte farfelue → reje
     assert.strictEqual(mp4MaxHeight(new Uint8Array(b)), 0);
 });
 
+/* ── v3.1.16 : ciblage chirurgical du moov — mp4MoovStartOffset ─────────── */
+// Cas réel Fall 2 : le moov d'un long métrage dépasse 1 Mo (6,6 Mo live) —
+// les suffix ranges de queue n'atteignent jamais le tkhd (début du moov).
+// L'en-tête du mdat suffit à calculer son début PILE.
+import { mp4MoovStartOffset } from '../src/utils/mp4.js';
+import { buildMp4MdatHead } from './helpers_mp4.mjs';
+
+t('mp4MoovStartOffset : ftyp+mdat(3 Mo) → moov pile après le mdat (20+S)', () => {
+    // 20 (ftyp) + 3 000 000 (mdat déclaré, en-tête inclus) = 3 000 020.
+    assert.strictEqual(mp4MoovStartOffset(buildMp4MdatHead(3000000)), 3000020);
+});
+t('mp4MoovStartOffset : faststart (moov visible dans le chunk) → -1 (parcours strict suffit)', () => {
+    assert.strictEqual(mp4MoovStartOffset(buildMp4(1080)), -1);
+});
+t('mp4MoovStartOffset : junk v3.1.12 (mdat 136 o) → 156', () => {
+    // buildMp4HeadJunk : ftyp 20 o + mdat (8+128=136 o) → 20 + 136 = 156.
+    assert.strictEqual(mp4MoovStartOffset(buildMp4HeadJunk()), 156);
+});
+t('mp4MoovStartOffset : mdat largesize u64 → offset calculé sur la taille 64 bits', () => {
+    const b = [];
+    const put32 = (n) => b.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+    put32(20); for (const c of 'ftyp') b.push(c.charCodeAt(0)); for (const c of 'isom') b.push(c.charCodeAt(0)); put32(0x200); for (const c of 'isom') b.push(c.charCodeAt(0));
+    put32(1); for (const c of 'mdat') b.push(c.charCodeAt(0)); // size=1 → largesize
+    put32(0); put32(2000000); // u64 = 2 000 000
+    b.push(0x41, 0x42, 0x43, 0x44);
+    assert.strictEqual(mp4MoovStartOffset(new Uint8Array(b)), 20 + 2000000);
+});
+t('mp4MoovStartOffset : mdat size=0 (dernière boîte) → -1, rien après', () => {
+    const b = [];
+    const put32 = (n) => b.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+    put32(20); for (const c of 'ftyp') b.push(c.charCodeAt(0)); for (const c of 'isom') b.push(c.charCodeAt(0)); put32(0x200); for (const c of 'isom') b.push(c.charCodeAt(0));
+    put32(0); for (const c of 'mdat') b.push(c.charCodeAt(0)); b.push(0xff, 0xff, 0xff, 0xff);
+    assert.strictEqual(mp4MoovStartOffset(new Uint8Array(b)), -1);
+});
+t('mp4MoovStartOffset : buffer court / boîte tronquée → -1 (on n extrapole pas)', () => {
+    assert.strictEqual(mp4MoovStartOffset(new Uint8Array(0)), -1);
+    assert.strictEqual(mp4MoovStartOffset(new Uint8Array(10).fill(0x41)), -1);
+    // ftyp(size 20) puis boîte de 4 o (corrompue) → -1.
+    const b = [];
+    const put32 = (n) => b.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+    put32(20); for (const c of 'ftyp') b.push(c.charCodeAt(0)); for (const c of 'isom') b.push(c.charCodeAt(0)); put32(0x200); for (const c of 'isom') b.push(c.charCodeAt(0));
+    put32(4); for (const c of 'free') b.push(c.charCodeAt(0));
+    assert.strictEqual(mp4MoovStartOffset(new Uint8Array(b)), -1);
+});
+
+/* ── v3.1.16 : qualité MP4 direct webflix lue à la RÉSOLUTION ───────────── */
+// Le bug utilisateur : le MP4 FastFlux (Fall-2-HD-2026.mp4 = 1280×720) ne
+// devait sa qualité qu'à la sonde de vérification (best-effort, budget
+// partagé) — coupée sur le device → « Direct » affiché. Désormais la qualité
+// est fixée dès la résolution (miroir uqload/Nexus), testée par fetch mocké.
+const tA = async (name, fn) => {
+    try { await fn(); ok++; console.log('  ✓ ' + name); }
+    catch (err) { ko++; console.error('  ✗ ' + name + ' — ' + err.message); }
+};
+{
+    const { directMp4Quality } = await import('../src/sources/webflix.js');
+    const mp4Resp = b => ({
+        status: 206,
+        url: 'https://cdn80.zen-blk.store/movies/Fall-2-HD-2026.mp4',
+        headers: { get: () => 'video/mp4' },
+        arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength),
+        text: async () => '',
+    });
+    const savedFetch = globalThis.fetch;
+    try {
+        await tA('directMp4Quality : MP4 faststart sans motif URL → « 720p » dès la résolution', async () => {
+            globalThis.fetch = async () => mp4Resp(buildMp4(720, { version: 0 }));
+            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/Fall-2-HD-2026.mp4'), '720p');
+        });
+        await tA('directMp4Quality : moov non faststart loin dans le fichier → ciblage après mdat', async () => {
+            const head = buildMp4MdatHead(3000000);
+            const moov = buildMp4Tail(1080, { version: 0 });
+            globalThis.fetch = async (url, o = {}) => {
+                const rg = String((o.headers || {}).Range || '');
+                if (rg === 'bytes=0-131071') return mp4Resp(head);
+                if (rg === 'bytes=3000020-3131091') return mp4Resp(moov);
+                return { status: 404, url, headers: { get: () => '' }, text: async () => '' };
+            };
+            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/Film-4K.mp4'), '1080p');
+        });
+        await tA('directMp4Quality : corps HTML / erreur réseau → chaîne vide (jamais de libellé inventé)', async () => {
+            globalThis.fetch = async () => ({
+                status: 200,
+                url: 'https://cdn80.zen-blk.store/movies/x.mp4',
+                headers: { get: () => 'text/html' },
+                text: async () => '<html>captcha</html>',
+                arrayBuffer: async () => new ArrayBuffer(0),
+            });
+            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/x.mp4'), '');
+            globalThis.fetch = async () => { throw new Error('réseau injoignable'); };
+            assert.strictEqual(await directMp4Quality('https://cdn80.zen-blk.store/movies/x.mp4'), '');
+        });
+    } finally {
+        globalThis.fetch = savedFetch;
+    }
+}
+
 /* ── v3.1.12 : garde anti faux positifs — 'tkhd' apparu PAR HASARD dans du mdat ── */
 // Leurre : boîte 'tkhd' de géométrie plausible (taille 100 o, version 0,
 // contenue dans le buffer) dont la hauteur/largeur sont contrôlées — c'est

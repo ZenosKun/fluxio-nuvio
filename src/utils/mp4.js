@@ -199,6 +199,49 @@ export function looksMp4(u8) {
     return false;
 }
 
+/**
+ * Offset absolu où commence le moov d'un MP4 NON faststart, déduit du chunk
+ * de TÊTE (v3.1.16). Layout canonique ftyp + [free] + mdat + moov : le moov
+ * suit immédiatement le mdat — l'en-tête du mdat (offset + taille déclarée)
+ * suffit à calculer son début PILE. Utilité : le moov d'un long métrage
+ * dépasse souvent 1 Mo (Fall 2 : 6,6 Mo !) — les suffix ranges de queue
+ * (256 Ko / 1 Mo) n'atteignent jamais le tkhd, qui vit au DÉBUT du moov ;
+ * un Range ciblé à cet offset tombe dessus au premier essai.
+ *
+ * Renvoie -1 (pas de ciblage possible) quand :
+ *  - un en-tête 'moov' est visible dans le chunk (faststart — le parcours
+ *    strict de mp4MaxHeight couvre déjà ce cas) ;
+ *  - mdat annonce size=0 (boîte dernière — rien après) ;
+ *  - taille 64 bits illisible ou boîte tronquée/corrompue ;
+ *  - aucune boîte mdat vue (fragmenté, exotique).
+ */
+export function mp4MoovStartOffset(u8) {
+    if (!u8 || u8.length < 16) return -1;
+    let dv;
+    try {
+        dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    } catch (e) {
+        return -1;
+    }
+    let o = 0;
+    let afterMdat = -1;
+    while (o + 8 <= u8.length) {
+        let size = dv.getUint32(o);
+        const t = String.fromCharCode(u8[o + 4], u8[o + 5], u8[o + 6], u8[o + 7]);
+        if (size === 1) {
+            // Taille 64 bits (largeSize) : en-tête 16 o, la boîte suit.
+            try { size = Number(dv.getBigUint64(o + 8)); } catch (e) { return -1; }
+        } else if (size === 0) {
+            return -1; // boîte dernière : rien après elle
+        }
+        if (size < 8) return -1; // tronquée/corrompue : on n'extrapole pas
+        if (t === 'moov') return -1; // moov visible ici : parcours strict suffit
+        if (t === 'mdat') afterMdat = o + size; // la boîte APRÈS le (dernier) mdat
+        o += size;
+    }
+    return afterMdat;
+}
+
 /** Premier fragment non ASCII-contrôlé → page HTML ? (équivalent binaire de
  * looksHtml de verify.js — pour goûter un corps en octets sans le décoder.) */
 export function bytesLookHtml(u8) {

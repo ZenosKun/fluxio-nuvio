@@ -1,7 +1,7 @@
 // Tests offline de la vérification de liens et du nom affiché.
 import { verifyStreams, probeOne, nextHlsUri } from '../src/core/verify.js';
 import { finalizeStreams, makeStream } from '../src/core/stream.js';
-import { buildMp4, buildMp4HeadJunk, buildMp4Tail } from './helpers_mp4.mjs';
+import { buildMp4, buildMp4HeadJunk, buildMp4Tail, buildMp4MdatHead } from './helpers_mp4.mjs';
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : ' → ' + d)); };
 const calls = [];
@@ -100,6 +100,31 @@ globalThis.fetch = async (url, o = {}) => {
     if (rg === 'bytes=-262144') return respBytes(206, 'text/html', buildMp4Tail(2160, { version: 0 }));
     return respBytes(206, 'text/html', buildMp4HeadJunk());
   }
+  // v3.1.16 — ciblage chirurgical du moov : moov NON faststart > 1 Mo (cas
+  // réel Fall 2 : 6,6 Mo) — les suffix ranges de queue n'atteignent jamais le
+  // tkhd (début du moov). L'en-tête mdat annonce 3 000 000 o à l'offset 20 :
+  // le moov commence pile à 20 + 3 000 000 = 3 000 020 → le Range ciblé
+  // bytes=3000020-3131091 doit être émis et contenir le tkhd.
+  if (url.includes('moovfar.mp4')) {
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('video/mp4'), text: async () => '' };
+    const rg = String((o.headers || {}).Range || '');
+    if (rg === 'bytes=0-131071') return respBytes(206, 'video/mp4', buildMp4MdatHead(3000000));
+    if (rg === 'bytes=3000020-3131091') return respBytes(206, 'video/mp4', buildMp4Tail(1080, { version: 0 }));
+    return respBytes(206, 'video/mp4', buildMp4HeadJunk());
+  }
+  if (url.includes('moovfarfail.mp4')) {
+    // Le Range ciblé échoue (404) → repli suffix ranges de queue (v3.1.12).
+    if (o.method === 'HEAD') return { status: 200, url, headers: h('video/mp4'), text: async () => '' };
+    const rg = String((o.headers || {}).Range || '');
+    if (rg === 'bytes=0-131071') return respBytes(206, 'video/mp4', buildMp4MdatHead(3000000));
+    if (rg === 'bytes=3000020-3131091') return { status: 404, url, headers: h('video/mp4'), text: async () => 'gone' };
+    if (rg === 'bytes=-262144') return respBytes(206, 'video/mp4', buildMp4Tail(720, { version: 1 }));
+    return respBytes(206, 'video/mp4', buildMp4HeadJunk());
+  }
+  // v3.1.16 — neutralité : échec RÉSEAU (statut 0) d'un MP4 → l'hôte est mis
+  // en quarantaine 2 min par le disjoncteur ; TOUT autre lien du même hôte
+  // doit ensuite rester « ? » (non testé), jamais « KO » retiré.
+  if (url.includes('netfail.mp4')) throw new Error('getaddrinfo ENOTFOUND h8.example');
   return { status: 200, url, text: async () => '' };
 };
 const cfg = { fallbackLangs: ['vf', 'vostfr', 'vo'], allowOtherLang: true };
@@ -205,6 +230,35 @@ ok('verify conserve le tri weak, ⚠ non doublé', outWeak[1].url.includes('w2.e
   ok('fastflux mensonger + moov final → conservé + « 4K » (combo réel)', r3.ok === true && r3.quality === '4K', JSON.stringify(r3));
   const q5 = await verifyStreams(finalizeStreams([mk('W · Discovery 4K · MP4 · VF', 'https://t.example/tail4k.mp4', 'webflix')], cfg), { remainingMs: 20000 });
   ok('verifyStreams propage la qualité de la sonde de queue', q5.length === 1 && q5[0].quality === '4K', JSON.stringify(q5.map(s => s.quality)));
+}
+
+// v3.1.16 — ciblage chirurgical du moov : moov non faststart > 1 Mo (Fall 2 :
+// 6,6 Mo — la queue 256 Ko/1 Mo n'atteint jamais le tkhd, début du moov).
+{
+  calls.length = 0;
+  const r1 = await probeOne({ url: 'https://h.example/moovfar.mp4', headers: {} }, 4000, false);
+  ok('moov > 1 Mo non faststart : ciblage chirurgical après mdat → « 1080p »', r1.ok === true && r1.quality === '1080p', JSON.stringify(r1));
+  const far = calls.filter(c => c[1].includes('moovfar.mp4') && c[0] === 'GET').map(c => c[2].Range);
+  ok('Range ciblé émis à l offset calculé (20+mdat) AVANT la queue', far.indexOf('bytes=3000020-3131091') !== -1, JSON.stringify(far));
+  ok('succès du ciblage → aucun suffix range de queue (1 requête au lieu de 2)', far.indexOf('bytes=-262144') === -1, JSON.stringify(far));
+  const r2 = await probeOne({ url: 'https://h.example/moovfarfail.mp4', headers: {} }, 4000, false);
+  ok('Range ciblé 404 → repli suffix range de queue → « 720p »', r2.ok === true && r2.quality === '720p', JSON.stringify(r2));
+  const q6 = await verifyStreams(finalizeStreams([mk('W · film long · MP4 · VF', 'https://t.example/moovfar.mp4', 'webflix')], cfg), { remainingMs: 20000 });
+  ok('verifyStreams propage la qualité du ciblage chirurgical', q6.length === 1 && q6[0].quality === '1080p', JSON.stringify(q6.map(s => s.quality)));
+}
+
+// v3.1.16 — neutralité du chemin MP4 HEAD : un échec réseau (statut 0) met
+// l'hôte en quarantaine par le disjoncteur ; les sondes suivantes sur le même
+// hôte reçoivent « hôte injoignable (disjoncteur) » — elles ne doivent PAS
+// retirer le lien (bug observé en live : FastFlux retiré après un sniff trop
+// lent, alors que le CDN répondait au lecteur).
+{
+  const dead = finalizeStreams([mk('W · netfail · MP4 · VF', 'https://h8.example/netfail.mp4', 'webflix')], cfg);
+  const outDead = await verifyStreams(dead, { remainingMs: 20000 });
+  ok('échec réseau réel (statut 0) → lien retiré (comportement inchangé)', outDead.length === 0, JSON.stringify(outDead.map(s => s.name)));
+  const after = finalizeStreams([mk('W · même hôte · MP4 · VF', 'https://h8.example/autre.mp4', 'webflix')], cfg);
+  const outAfter = await verifyStreams(after, { remainingMs: 20000 });
+  ok('hôte en quarantaine (disjoncteur) → lien CONSERVÉ en « ? » (neutralité réparée)', outAfter.length === 1 && !outAfter[0].name.endsWith('⚠'), JSON.stringify(outAfter.map(s => s.name)));
 }
 // v3.1.13 — anti-écran-noir uqload : le master multi-pistes (pistes audio
 // séparées + variantes MUXÉES -a2 anglais) est remplacé par la variante muxée

@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.15 — multi-sources FR pour Nuvio
- * Built: 2026-10-29T10:52:54.006Z
+ * Fluxio v3.1.16 — multi-sources FR pour Nuvio
+ * Built: 2026-10-29T12:14:35.330Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -661,6 +661,35 @@ var __provider = (() => {
     if (!(h > 0)) return "";
     return h >= 2e3 ? "4K" : h + "p";
   }
+  function mp4MoovStartOffset(u8) {
+    if (!u8 || u8.length < 16) return -1;
+    let dv;
+    try {
+      dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    } catch (e) {
+      return -1;
+    }
+    let o = 0;
+    let afterMdat = -1;
+    while (o + 8 <= u8.length) {
+      let size = dv.getUint32(o);
+      const t = String.fromCharCode(u8[o + 4], u8[o + 5], u8[o + 6], u8[o + 7]);
+      if (size === 1) {
+        try {
+          size = Number(dv.getBigUint64(o + 8));
+        } catch (e) {
+          return -1;
+        }
+      } else if (size === 0) {
+        return -1;
+      }
+      if (size < 8) return -1;
+      if (t === "moov") return -1;
+      if (t === "mdat") afterMdat = o + size;
+      o += size;
+    }
+    return afterMdat;
+  }
   function bytesLookHtml(u8) {
     if (!u8 || !u8.length) return false;
     let i = 0;
@@ -678,21 +707,44 @@ var __provider = (() => {
   });
 
   // src/core/verify.js
-  function mp4HeadQuality(st, headers, left) {
+  function mp4FileQuality(st, headers, left, headRes) {
     return __async(this, null, function* () {
-      try {
-        const res = yield fetchBytes(st.url, {
-          method: "GET",
-          headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: "*/*" }),
-          timeout: Math.min(MOOV_MS, left())
-        });
-        const u8 = res.bytes;
-        if (!u8 || !u8.length || bytesLookHtml(u8)) return "";
-        const h = mp4MaxHeight(u8);
-        return h ? mp4QualityLabel(h) : "";
-      } catch (e) {
-        return "";
+      let head = headRes || null;
+      if (!head) {
+        try {
+          head = yield fetchBytes(st.url, {
+            method: "GET",
+            headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: "*/*" }),
+            timeout: Math.min(MOOV_MS, left())
+          });
+        } catch (e) {
+          return "";
+        }
       }
+      const hb = head && head.bytes;
+      if (!hb || !hb.length || bytesLookHtml(hb)) return "";
+      let q = mp4QualityLabel(mp4MaxHeight(hb));
+      if (q) return q;
+      const moovStart = mp4MoovStartOffset(hb);
+      if (moovStart >= 0) {
+        try {
+          const res = yield fetchBytes(st.url, {
+            method: "GET",
+            headers: Object.assign({}, headers, {
+              Range: "bytes=" + moovStart + "-" + (moovStart + MOOV_RANGE_BYTES - 1),
+              Accept: "*/*"
+            }),
+            timeout: Math.min(MOOV_MS, left())
+          });
+          const u8 = res.bytes;
+          if (u8 && u8.length && !bytesLookHtml(u8)) {
+            q = mp4QualityLabel(mp4MaxHeight(u8));
+            if (q) return q;
+          }
+        } catch (e) {
+        }
+      }
+      return mp4TailQuality(st, headers, left);
     });
   }
   function mp4TailQuality(st, headers, left) {
@@ -806,8 +858,7 @@ var __provider = (() => {
               if (!u8 || !u8.length) return { ok: null, why: "corps vide (content-type mensonger)" };
               if (bytesLookHtml(u8)) return { ok: false, why: "corps HTML (content-type mensonger)" };
               let q2 = qualityFromUrl(res2.finalUrl || st.url);
-              if (!q2) q2 = mp4QualityLabel(mp4MaxHeight(u8));
-              if (!q2) q2 = yield mp4TailQuality(st, headers, left);
+              if (!q2) q2 = yield mp4FileQuality(st, headers, left, sniff);
               return { ok: true, quality: q2, why: "content-type mensonger, m\xE9dia confirm\xE9" };
             } catch (err2) {
               if (neutralErr(err2)) return { ok: null, why: "sonde interrompue" };
@@ -815,10 +866,10 @@ var __provider = (() => {
             }
           }
           let q = qualityFromUrl(res2.finalUrl || st.url);
-          if (!q) q = yield mp4HeadQuality(st, headers, left);
-          if (!q) q = yield mp4TailQuality(st, headers, left);
+          if (!q) q = yield mp4FileQuality(st, headers, left, null);
           return { ok: true, quality: q };
         } catch (err) {
+          if (neutralErr(err)) return { ok: null, why: "sonde interrompue (disjoncteur/budget)" };
           const status = statusOf(err);
           if (status === 405 || status === 501) return { ok: null, why: "HEAD refus\xE9" };
           return { ok: false, why: status ? "HTTP " + status : "injoignable" };
@@ -933,7 +984,7 @@ var __provider = (() => {
       return good;
     });
   }
-  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE, MOOV_RANGE, MOOV_TAIL_RANGES, MOOV_MS;
+  var PROBE_MS, PROBE_MAX, PROBE_BUDGET_MS, MIN_REMAINING_MS, DEEP_MAX, SEGMENT_RANGE, MOOV_RANGE, MOOV_RANGE_BYTES, MOOV_TAIL_RANGES, MOOV_MS;
   var init_verify = __esm({
     "src/core/verify.js"() {
       init_http();
@@ -946,6 +997,7 @@ var __provider = (() => {
       DEEP_MAX = 8;
       SEGMENT_RANGE = "bytes=0-16383";
       MOOV_RANGE = "bytes=0-131071";
+      MOOV_RANGE_BYTES = 131072;
       MOOV_TAIL_RANGES = ["bytes=-262144", "bytes=-1048576"];
       MOOV_MS = 2500;
     }
@@ -4050,7 +4102,7 @@ var __provider = (() => {
         if (entry && entry.url && typeof entry.url === "string") {
           console.log("[webflix] discovery direct S" + s + "E" + e);
           const langKey = yield langKeyFor(ctx, entry.url, entry.language);
-          push(directStream(ctx, entry.url, "Discovery", langKey, e, entry.quality));
+          push(yield directStream(ctx, entry.url, "Discovery", langKey, e, entry.quality));
           directPushed = true;
         }
         if (!directPushed) {
@@ -4058,7 +4110,7 @@ var __provider = (() => {
           if (ff && ff.url) {
             console.log("[webflix] fastflux direct S" + s + "E" + e);
             const langKey = yield langKeyFor(ctx, ff.url, ff.language);
-            push(directStream(ctx, ff.url, "FastFlux", langKey, e, ff.quality));
+            push(yield directStream(ctx, ff.url, "FastFlux", langKey, e, ff.quality));
             directPushed = true;
           }
         }
@@ -4067,7 +4119,7 @@ var __provider = (() => {
         if (ff && ff.url) {
           console.log("[webflix] fastflux direct film");
           const langKey = yield langKeyFor(ctx, ff.url, ff.language);
-          push(directStream(ctx, ff.url, "FastFlux", langKey, 0, ff.quality));
+          push(yield directStream(ctx, ff.url, "FastFlux", langKey, 0, ff.quality));
           directPushed = true;
         }
       }
@@ -4323,7 +4375,7 @@ var __provider = (() => {
       for (const u of found) {
         if (shouldStop() || count >= MAX_STREAMS) break;
         if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u)) {
-          push(directStream(ctx, u, emb.source, emb.lang, ctx.mediaType === "tv" ? ctx.episode : 0));
+          push(yield directStream(ctx, u, emb.source, emb.lang, ctx.mediaType === "tv" ? ctx.episode : 0));
           count++;
         } else if (providerFromEmbedUrl(u)) {
           iframes.push(u);
@@ -4441,7 +4493,7 @@ var __provider = (() => {
           if (shouldStop()) break;
           const langTag = zenixLangTag(play.lang, langParam);
           if (/\.m3u8(\?|$)/i.test(play.stream_url) || /\.mp4(\?|$)/i.test(play.stream_url) || /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(play.stream_url)) {
-            push(directStream(ctx, play.stream_url, "Zenix", langTag, ctx.mediaType === "tv" ? ctx.episode : 0));
+            push(yield directStream(ctx, play.stream_url, "Zenix", langTag, ctx.mediaType === "tv" ? ctx.episode : 0));
             count++;
             continue;
           }
@@ -4456,7 +4508,7 @@ var __provider = (() => {
           for (const u of urls) {
             if (count >= MAX_STREAMS || shouldStop()) break;
             if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u) || /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(u)) {
-              push(directStream(ctx, u, "Zenix", langTag, ctx.mediaType === "tv" ? ctx.episode : 0));
+              push(yield directStream(ctx, u, "Zenix", langTag, ctx.mediaType === "tv" ? ctx.episode : 0));
               count++;
             }
           }
@@ -4566,27 +4618,72 @@ var __provider = (() => {
     if (ua) headers["User-Agent"] = ua;
     return headers;
   }
+  function directMp4Quality(url) {
+    return __async(this, null, function* () {
+      const PROBE_MS2 = 2500;
+      try {
+        const res = yield fetchBytes(url, {
+          method: "GET",
+          headers: { Accept: "*/*", Referer: SITE + "/", Range: "bytes=0-131071" },
+          timeout: PROBE_MS2
+        });
+        const u8 = res.bytes;
+        if (!u8 || !u8.length || bytesLookHtml(u8)) return "";
+        const direct = mp4QualityLabel(mp4MaxHeight(u8));
+        if (direct) return direct;
+        const moovStart = mp4MoovStartOffset(u8);
+        if (moovStart >= 0) {
+          try {
+            const far = yield fetchBytes(url, {
+              method: "GET",
+              headers: {
+                Accept: "*/*",
+                Referer: SITE + "/",
+                Range: "bytes=" + moovStart + "-" + (moovStart + 131071)
+              },
+              timeout: PROBE_MS2
+            });
+            const f8 = far.bytes;
+            if (f8 && f8.length && !bytesLookHtml(f8)) {
+              return mp4QualityLabel(mp4MaxHeight(f8)) || "";
+            }
+          } catch (e) {
+          }
+        }
+        return "";
+      } catch (e) {
+        return "";
+      }
+    });
+  }
   function directStream(ctx, url, source, langKey, episode, apiQuality) {
-    const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
-    return makeStream({
-      title: composeTitle({
-        site: "Webflix",
-        episode: parseInt(episode, 10) || 0,
-        host: source,
+    return __async(this, null, function* () {
+      const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
+      let quality = realQuality(apiQuality, url, kind);
+      if (quality === "Direct") {
+        const q = yield directMp4Quality(url);
+        if (q) quality = q;
+      }
+      return makeStream({
+        title: composeTitle({
+          site: "Webflix",
+          episode: parseInt(episode, 10) || 0,
+          host: source,
+          url,
+          lang: langLabel2(langKey)
+        }),
         url,
-        lang: langLabel2(langKey)
-      }),
-      url,
-      quality: realQuality(apiQuality, url, kind),
-      language: langLabel2(langKey),
-      headers: {
-        "User-Agent": HEADERS2["User-Agent"],
-        Accept: "*/*",
-        "Accept-Language": HEADERS2["Accept-Language"],
-        Referer: SITE + "/"
-      },
-      _langKey: langKey,
-      _site: "webflix"
+        quality,
+        language: langLabel2(langKey),
+        headers: {
+          "User-Agent": HEADERS2["User-Agent"],
+          Accept: "*/*",
+          "Accept-Language": HEADERS2["Accept-Language"],
+          Referer: SITE + "/"
+        },
+        _langKey: langKey,
+        _site: "webflix"
+      });
     });
   }
   function realQuality(apiQuality, url, kind) {
@@ -4603,6 +4700,7 @@ var __provider = (() => {
       init_hosts();
       init_stream();
       init_verify();
+      init_mp4();
       SITE = "https://webflix.art";
       HEADERS2 = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",

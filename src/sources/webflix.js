@@ -19,10 +19,11 @@
  * ancrage TMDB et garde-fous de matching).
  */
 
-import { fetchText as coreFetchText, fetchJson, resolveUrl } from '../utils/http.js';
+import { fetchText as coreFetchText, fetchJson, fetchBytes, resolveUrl } from '../utils/http.js';
 import { resolveEmbeds, providerFromEmbedUrl } from '../hosts/index.js';
 import { makeStream, composeTitle, qualityFromUrl } from '../core/stream.js';
 import { bestHlsQuality, muxedVariantUrl } from '../core/verify.js';
+import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, mp4MoovStartOffset } from '../utils/mp4.js';
 
 const SITE = 'https://webflix.art';
 
@@ -90,7 +91,7 @@ async function run(ctx) {
         if (entry && entry.url && typeof entry.url === 'string') {
             console.log('[webflix] discovery direct S' + s + 'E' + e);
             const langKey = await langKeyFor(ctx, entry.url, entry.language);
-            push(directStream(ctx, entry.url, 'Discovery', langKey, e, entry.quality));
+            push(await directStream(ctx, entry.url, 'Discovery', langKey, e, entry.quality));
             directPushed = true;
         }
         if (!directPushed) {
@@ -98,7 +99,7 @@ async function run(ctx) {
             if (ff && ff.url) {
                 console.log('[webflix] fastflux direct S' + s + 'E' + e);
                 const langKey = await langKeyFor(ctx, ff.url, ff.language);
-                push(directStream(ctx, ff.url, 'FastFlux', langKey, e, ff.quality));
+                push(await directStream(ctx, ff.url, 'FastFlux', langKey, e, ff.quality));
                 directPushed = true;
             }
         }
@@ -107,7 +108,7 @@ async function run(ctx) {
         if (ff && ff.url) {
             console.log('[webflix] fastflux direct film');
             const langKey = await langKeyFor(ctx, ff.url, ff.language);
-            push(directStream(ctx, ff.url, 'FastFlux', langKey, 0, ff.quality));
+            push(await directStream(ctx, ff.url, 'FastFlux', langKey, 0, ff.quality));
             directPushed = true;
         }
     }
@@ -452,7 +453,7 @@ async function resolveEmbedPage(ctx, emb, push) {
     for (const u of found) {
         if (shouldStop() || count >= MAX_STREAMS) break;
         if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u)) {
-            push(directStream(ctx, u, emb.source, emb.lang, ctx.mediaType === 'tv' ? ctx.episode : 0));
+            push(await directStream(ctx, u, emb.source, emb.lang, ctx.mediaType === 'tv' ? ctx.episode : 0));
             count++;
         } else if (providerFromEmbedUrl(u)) {
             iframes.push(u);
@@ -595,7 +596,7 @@ async function resolveZenix(ctx, emb, push) {
             // stream_url parfois directement jouable (HLS /v1/ pré-tokenisé).
             if (/\.m3u8(\?|$)/i.test(play.stream_url) || /\.mp4(\?|$)/i.test(play.stream_url) ||
                 /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(play.stream_url)) {
-                push(directStream(ctx, play.stream_url, 'Zenix', langTag, ctx.mediaType === 'tv' ? ctx.episode : 0));
+                push(await directStream(ctx, play.stream_url, 'Zenix', langTag, ctx.mediaType === 'tv' ? ctx.episode : 0));
                 count++;
                 continue;
             }
@@ -613,7 +614,7 @@ async function resolveZenix(ctx, emb, push) {
                 if (count >= MAX_STREAMS || shouldStop()) break;
                 if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u) ||
                     /^https:\/\/stream\.fluxora\.sbs\/v1\//i.test(u)) {
-                    push(directStream(ctx, u, 'Zenix', langTag, ctx.mediaType === 'tv' ? ctx.episode : 0));
+                    push(await directStream(ctx, u, 'Zenix', langTag, ctx.mediaType === 'tv' ? ctx.episode : 0));
                     count++;
                 }
                 // Les iframes Zenix pointent des hosts hors de notre gamme : skip.
@@ -746,6 +747,57 @@ function buildHeaders(referer, ua) {
     return headers;
 }
 
+/** Qualité réelle d'un MP4 direct, lue à la RÉSOLUTION (v3.1.16) : moov/tkhd
+ * du conteneur via GET Range 128 Ko — Fall 2 : Fall-2-HD-2026.mp4 annonce
+ * 1280×720 alors que l'API répond quality=Unknown et que l'URL ne porte
+ * aucun motif.
+ *
+ * Pourquoi ICI et pas seulement dans la sonde de vérification : uqload et
+ * Nexus fixent leur qualité à la résolution (bestHlsQuality) — le MP4
+ * FastFlux dépendait à 100 % de la sonde (best-effort, budget partagé 8 s,
+ * échéance 4 s/flux) : sur le device elle est parfois coupée avant d'avoir
+ * sniffé → le flux restait étiqueté « Direct ». 2,5 s max, échec silencieux
+ * → '' (on n'invente jamais de libellé). Exportée pour les tests (fetch mocké). */
+export async function directMp4Quality(url) {
+    const PROBE_MS = 2500;
+    try {
+        const res = await fetchBytes(url, {
+            method: 'GET',
+            headers: { Accept: '*/*', Referer: SITE + '/', Range: 'bytes=0-131071' },
+            timeout: PROBE_MS,
+        });
+        const u8 = res.bytes;
+        if (!u8 || !u8.length || bytesLookHtml(u8)) return '';
+        const direct = mp4QualityLabel(mp4MaxHeight(u8));
+        if (direct) return direct;
+        // Moov non faststart : son début PILE après le mdat (v3.1.16) — le
+        // moov d'un long métrage dépasse 1 Mo, la queue seule n'y arriverait pas.
+        const moovStart = mp4MoovStartOffset(u8);
+        if (moovStart >= 0) {
+            try {
+                const far = await fetchBytes(url, {
+                    method: 'GET',
+                    headers: {
+                        Accept: '*/*',
+                        Referer: SITE + '/',
+                        Range: 'bytes=' + moovStart + '-' + (moovStart + 131071),
+                    },
+                    timeout: PROBE_MS,
+                });
+                const f8 = far.bytes;
+                if (f8 && f8.length && !bytesLookHtml(f8)) {
+                    return mp4QualityLabel(mp4MaxHeight(f8)) || '';
+                }
+            } catch (e) {
+                /* silencieux : pas de libellé */
+            }
+        }
+        return '';
+    } catch (e) {
+        return '';
+    }
+}
+
 /** Flux direct FastFlux/Discovery/Zenix (mp4 ou HLS servi pré-tokenisé).
  *
  * Headers de lecture OBLIGATOIRES (v3.1.7, diagnostic buffering infini) : le
@@ -754,9 +806,18 @@ function buildHeaders(referer, ua) {
  * (?ff=…). Le lecteur natif Nuvio applique ces en-têtes tels quels.
  *
  * Qualité (v3.1.8) : champ API du payload Discovery/FastFlux s'il est parlant
- * (« Unknown » ignoré), sinon motif dans l'URL, sinon libellé technique. */
-function directStream(ctx, url, source, langKey, episode, apiQuality) {
+ * (« Unknown » ignoré), sinon motif dans l'URL, sinon libellé technique —
+ * v3.1.16 : un libellé générique sur un MP4 direct déclenche la lecture du
+ * moov/tkhd (directMp4Quality) AVANT de retomber sur « Direct ».
+ * @param {string} apiQuality champ « quality » de l'API (peut être Unknown)
+ */
+async function directStream(ctx, url, source, langKey, episode, apiQuality) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || '')) ? 'HLS' : 'MP4';
+    let quality = realQuality(apiQuality, url, kind);
+    if (quality === 'Direct') {
+        const q = await directMp4Quality(url);
+        if (q) quality = q;
+    }
     return makeStream({
         title: composeTitle({
             site: 'Webflix',
@@ -766,7 +827,7 @@ function directStream(ctx, url, source, langKey, episode, apiQuality) {
             lang: langLabel(langKey),
         }),
         url: url,
-        quality: realQuality(apiQuality, url, kind),
+        quality: quality,
         language: langLabel(langKey),
         headers: {
             'User-Agent': HEADERS['User-Agent'],

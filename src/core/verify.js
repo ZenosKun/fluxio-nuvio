@@ -46,7 +46,7 @@
 
 import { fetchText, fetchBytes, fetchStatus, resolveUrl } from '../utils/http.js';
 import { qualityFromUrl, resolutionLabel } from './stream.js';
-import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, standardHeight } from '../utils/mp4.js';
+import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, standardHeight, mp4MoovStartOffset } from '../utils/mp4.js';
 
 const PROBE_MS = 4000;
 const PROBE_MAX = 10;
@@ -64,30 +64,69 @@ const SEGMENT_RANGE = 'bytes=0-16383';
  *  restant de la sonde ; un serveur qui ignore le Range (200) est parsé tel
  *  quel sans escalade (le corps est déjà le fichier entier). */
 const MOOV_RANGE = 'bytes=0-131071';
+const MOOV_RANGE_BYTES = 131072;
 const MOOV_TAIL_RANGES = ['bytes=-262144', 'bytes=-1048576'];
 const MOOV_MS = 2500;
 
 /**
- * Qualité réelle d'un MP4 direct : si l'URL ne porte aucun motif de
- * résolution (fastflux webflix : Lupin-S01-E01.mp4, l'API répond elle-même
- * quality=Unknown), on lit la hauteur annoncée par le moov/tkhd du
- * conteneur (GET Range 128 Ko, octets bruts — jamais le décodage UTF-8 qui
- * corromprait le binaire). Échec silencieux → '' (on n'invente rien).
+ * Qualité réelle d'un MP4 direct, en 3 étapes bornées (v3.1.16) — remplace
+ * la chaîne tête + queue aveugle de v3.1.12 :
+ *   1. TÊTE 128 Ko : moov faststart (tkhd dans les premiers octets du moov)
+ *      — le cas Fall 2 fastflux (Fall-2-HD-2026.mp4 : ftyp 32 o, moov 6,6 Mo
+ *      dès l'offset 32, tkhd 1280×720 → « 720p »).
+ *   2. CIBLAGE chirurgical : le chunk de tête annonce ftyp/mdat… l'en-tête
+ *      du mdat (offset + taille déclarée) donne le début PILE du moov non
+ *      faststart — un Range à cet offset tombe sur le tkhd au premier essai,
+ *      là où les suffix ranges de queue échouent (moov > 1 Mo d'un long
+ *      métrage : la queue n'atteint jamais le début du moov).
+ *   3. Repli v3.1.12 : suffix ranges de queue (256 Ko puis 1 Mo) pour les
+ *      layouts exotiques — un serveur qui ignore le Range (200) est parsé
+ *      tel quel sans escalade, HTML réel → '' (média mensonger).
+ * Échec silencieux → '' (on n'invente rien). `headRes` = réponse déjà
+ * lue par le goûtage content-type mensonger (une requête de moins).
  */
-async function mp4HeadQuality(st, headers, left) {
-    try {
-        const res = await fetchBytes(st.url, {
-            method: 'GET',
-            headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: '*/*' }),
-            timeout: Math.min(MOOV_MS, left()),
-        });
-        const u8 = res.bytes;
-        if (!u8 || !u8.length || bytesLookHtml(u8)) return '';
-        const h = mp4MaxHeight(u8);
-        return h ? mp4QualityLabel(h) : '';
-    } catch (e) {
-        return ''; // goûtage impossible : qualité inconnue, le lien reste « ? »/OK
+async function mp4FileQuality(st, headers, left, headRes) {
+    let head = headRes || null;
+    if (!head) {
+        try {
+            head = await fetchBytes(st.url, {
+                method: 'GET',
+                headers: Object.assign({}, headers, { Range: MOOV_RANGE, Accept: '*/*' }),
+                timeout: Math.min(MOOV_MS, left()),
+            });
+        } catch (e) {
+            return ''; // goûtage impossible : qualité inconnue, le lien reste « ? »/OK
+        }
     }
+    const hb = head && head.bytes;
+    if (!hb || !hb.length || bytesLookHtml(hb)) return '';
+    let q = mp4QualityLabel(mp4MaxHeight(hb));
+    if (q) return q;
+    // Étape 2 : le moov non faststart commence pile après le mdat annoncé.
+    const moovStart = mp4MoovStartOffset(hb);
+    if (moovStart >= 0) {
+        try {
+            const res = await fetchBytes(st.url, {
+                method: 'GET',
+                headers: Object.assign({}, headers, {
+                    Range: 'bytes=' + moovStart + '-' + (moovStart + MOOV_RANGE_BYTES - 1),
+                    Accept: '*/*',
+                }),
+                timeout: Math.min(MOOV_MS, left()),
+            });
+            const u8 = res.bytes;
+            if (u8 && u8.length && !bytesLookHtml(u8)) {
+                // Chunk aligné sur le début du moov : le parcours strict lit
+                // le tkhd (mvhd + trak/tkhd dans les ~300 premiers octets).
+                q = mp4QualityLabel(mp4MaxHeight(u8));
+                if (q) return q;
+            }
+        } catch (e) {
+            /* repli queue (étape 3) */
+        }
+    }
+    // Étape 3 : suffix ranges de queue (v3.1.12, layouts non canoniques).
+    return mp4TailQuality(st, headers, left);
 }
 
 /**
@@ -266,8 +305,7 @@ export async function probeOne(st, timeout, deep) {
                     // Binaire non-HTML accepté (signature ftyp probable mais
                     // non exigée : certains conteneurs démarrent autrement).
                     let q = qualityFromUrl(res.finalUrl || st.url);
-                    if (!q) q = mp4QualityLabel(mp4MaxHeight(u8));
-                    if (!q) q = await mp4TailQuality(st, headers, left); // moov en fin de fichier
+                    if (!q) q = await mp4FileQuality(st, headers, left, sniff); // réutilise le goûtage
                     return { ok: true, quality: q, why: 'content-type mensonger, média confirmé' };
                 } catch (err2) {
                     if (neutralErr(err2)) return { ok: null, why: 'sonde interrompue' };
@@ -276,10 +314,14 @@ export async function probeOne(st, timeout, deep) {
             }
             // v3.1.10 : qualité réelle du MP4 quand l'URL n'en dit rien.
             let q = qualityFromUrl(res.finalUrl || st.url);
-            if (!q) q = await mp4HeadQuality(st, headers, left);
-            if (!q) q = await mp4TailQuality(st, headers, left); // v3.1.12 : moov en fin de fichier
+            if (!q) q = await mp4FileQuality(st, headers, left, null); // tête → ciblage moov → queue
             return { ok: true, quality: q };
         } catch (err) {
+            // Neutralité (v3.1.16) : une sonde arrêtée par NOTRE disjoncteur
+            // (hôte mis en quarantaine 2 min — ex. sniff de qualité trop lent
+            // sous charge) ou par le budget global n'est pas une preuve de
+            // mort du lien — « ? » conservé, jamais « KO ».
+            if (neutralErr(err)) return { ok: null, why: 'sonde interrompue (disjoncteur/budget)' };
             const status = statusOf(err);
             if (status === 405 || status === 501) return { ok: null, why: 'HEAD refusé' };
             return { ok: false, why: status ? 'HTTP ' + status : 'injoignable' };

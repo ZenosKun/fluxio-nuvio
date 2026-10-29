@@ -75,6 +75,21 @@ export function buildMp4HeadJunk() {
     return new Uint8Array(bytes);
 }
 
+/** Chunk de TÊTE d'un MP4 non faststart avec mdat DÉCLARÉ de taille S
+ * (v3.1.16) : ftyp puis mdat (en-tête + payload farci TRONQUÉ — en réel ce
+ * serait des Go de vidéo). Le moov (fin de fichier) commence pile après le
+ * mdat : offset calculable = 20 + S — c'est ce que mp4MoovStartOffset doit
+ * retrouver pour le ciblage chirurgical de la sonde. */
+export function buildMp4MdatHead(mdatSize) {
+    const bytes = [];
+    const u32 = n => bytes.push((n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff);
+    const ascii = s => { for (const c of s) bytes.push(c.charCodeAt(0)); };
+    u32(20); ascii('ftyp'); ascii('isom'); u32(0x200); ascii('isom');
+    u32(mdatSize); ascii('mdat');
+    for (let i = 8; i < Math.min(mdatSize, 200); i++) bytes.push((i * 41 + 3) & 0xff);
+    return new Uint8Array(bytes);
+}
+
 /** Chunk de QUEUE d'un MP4 non faststart (v3.1.12) : démarre au MILIEU d'une
  * boîte (le parcours strict des boîtes y échoue — pas d'alignement), puis
  * contient le moov COMPLET (fin de fichier) avec tkhd version paramétrable.
