@@ -6,6 +6,9 @@
  * Le cœur transforme ça en objets Nuvio propres (champs internes retirés),
  * triés par langue préférée puis, à langue égale, par qualité décroissante
  * (v3.1.11 : 4K > 1080p > 720p > Auto (HLS) > Direct), et dédupliqués par URL.
+ * v3.1.18 : le champ size (« 1.27 GB », annoncé par l'API FastFlux) traverse
+ * jusqu'au flux Nuvio — le panneau de l'app l'affiche (Gowaru le passe aussi,
+ * cf. panneau « 720p · 1.27 GB · fr »).
  */
 
 const LANG_LABELS = {
@@ -39,6 +42,9 @@ export function makeStream(parts) {
         _langKey: parts._langKey || 'vo',
         _site: parts._site || '',
     };
+    // v3.1.18 : taille annoncée par l'API (« 1.27 GB ») — affichée par le
+    // panneau Nuvio. Champ optionnel : absent pour les flux sans info.
+    if (parts.size) st.size = String(parts.size);
     if (parts._weakPlayer === true) st._weakPlayer = true;
     return st;
 }
@@ -147,6 +153,7 @@ export function finalizeStreams(streams, cfg) {
             quality: s.quality || 'Direct',
             language: s.language || LANG_LABELS[s._langKey] || String(s._langKey || '').toUpperCase(),
         };
+        if (s.size) clean.size = String(s.size);
         if (s.headers && Object.keys(s.headers).length) clean.headers = s.headers;
         if (s.subtitles && s.subtitles.length) clean.subtitles = s.subtitles;
         (s._weakPlayer === true ? weak : good).push(clean);

@@ -1,6 +1,6 @@
 /**
- * Fluxio v3.1.17 — multi-sources FR pour Nuvio
- * Built: 2026-10-29T12:57:46.756Z
+ * Fluxio v3.1.18 — multi-sources FR pour Nuvio
+ * Built: 2026-10-30T10:52:43.069Z
  */
 var __provider = (() => {
   var __defProp = Object.defineProperty;
@@ -460,6 +460,7 @@ var __provider = (() => {
       _langKey: parts._langKey || "vo",
       _site: parts._site || ""
     };
+    if (parts.size) st.size = String(parts.size);
     if (parts._weakPlayer === true) st._weakPlayer = true;
     return st;
   }
@@ -528,6 +529,7 @@ var __provider = (() => {
         quality: s.quality || "Direct",
         language: s.language || LANG_LABELS[s._langKey] || String(s._langKey || "").toUpperCase()
       };
+      if (s.size) clean.size = String(s.size);
       if (s.headers && Object.keys(s.headers).length) clean.headers = s.headers;
       if (s.subtitles && s.subtitles.length) clean.subtitles = s.subtitles;
       (s._weakPlayer === true ? weak : good).push(clean);
@@ -4095,13 +4097,16 @@ var __provider = (() => {
       const s = parseInt(ctx.season, 10) || 1;
       const e = parseInt(ctx.episode, 10) || 1;
       let directPushed = false;
+      let ffStream = null;
       if (isTv) {
         const disc = yield discovery(ctx.tmdbId, cfg, signal);
         const entry = disc && disc[s + "-" + e];
         if (entry && entry.url && typeof entry.url === "string") {
           console.log("[webflix] discovery direct S" + s + "E" + e);
           const langKey = yield langKeyFor(ctx, entry.url, entry.language);
-          push(yield directStream(ctx, entry.url, "Discovery", langKey, e, entry.quality));
+          const ds = yield buildDirectStream(ctx, entry.url, "Discovery", langKey, e, entry.quality, entry.size, true);
+          push(ds.stream);
+          ffStream = ds.stream;
           directPushed = true;
         }
         if (!directPushed) {
@@ -4109,7 +4114,9 @@ var __provider = (() => {
           if (ff && ff.url) {
             console.log("[webflix] fastflux direct S" + s + "E" + e);
             const langKey = yield langKeyFor(ctx, ff.url, ff.language);
-            push(yield directStream(ctx, ff.url, "FastFlux", langKey, e, ff.quality));
+            const ds = yield buildDirectStream(ctx, ff.url, "FastFlux", langKey, e, ff.quality, ff.size, true);
+            push(ds.stream);
+            ffStream = ds.stream;
             directPushed = true;
           }
         }
@@ -4118,24 +4125,35 @@ var __provider = (() => {
         if (ff && ff.url) {
           console.log("[webflix] fastflux direct film");
           const langKey = yield langKeyFor(ctx, ff.url, ff.language);
-          push(yield directStream(ctx, ff.url, "FastFlux", langKey, 0, ff.quality));
+          const ds = yield buildDirectStream(ctx, ff.url, "FastFlux", langKey, 0, ff.quality, ff.size, true);
+          push(ds.stream);
+          ffStream = ds.stream;
           directPushed = true;
         }
       }
       if (!shouldStop()) {
         const nx = yield resolveNexus(ctx, "vf");
         if (nx) {
-          console.log("[webflix] nexus VF direct (" + (nx.quality || "Auto (HLS)") + ")");
-          push(nexusStream(ctx, nx, "vf"));
+          const pushedNexus = pushNexus(ctx, nx, "vf");
+          console.log("[webflix] nexus VF direct (" + (pushedNexus || "Auto (HLS)") + ")");
           directPushed = true;
+        }
+      }
+      if (ffStream && !shouldStop()) {
+        const softMs = cfg && Number(cfg.softMs) > 0 ? Number(cfg.softMs) : 1e4;
+        const softLeftMs = Math.max(0, softMs - (Date.now() - (ctx.started || Date.now())));
+        const q = yield directMp4Quality(ffStream.url, { softLeftMs });
+        if (q && q !== ffStream.quality) {
+          console.log("[webflix] qualit\xE9 directe raffin\xE9e (moov/tkhd) : " + ffStream.quality + " \u2192 " + q);
+          ffStream.quality = q;
         }
       }
       const prefIsVf = cfg.fallbackLangs[0] === "vf";
       if (!prefIsVf && !shouldStop()) {
         const nx = yield resolveNexus(ctx, "vostfr");
         if (nx) {
-          console.log("[webflix] nexus " + nx.lang + " direct (" + (nx.quality || "Auto (HLS)") + ")");
-          push(nexusStream(ctx, nx, nx.lang === "vostfr" ? "vostfr" : "vf"));
+          const pushedNexus = pushNexus(ctx, nx, nx.lang === "vostfr" ? "vostfr" : "vf");
+          console.log("[webflix] nexus " + nx.lang + " direct (" + (pushedNexus || "Auto (HLS)") + ")");
         }
       }
       if (directPushed && prefIsVf && !isTv) return;
@@ -4260,58 +4278,142 @@ var __provider = (() => {
         const hls = play && typeof play.hls === "string" ? play.hls : "";
         if (!/^https:\/\//i.test(hls) || !/\.m3u8(\?|$)|\.mp4(\?|$)/i.test(hls)) return null;
         if (shouldStop()) return null;
-        let url = hls;
-        let quality = "";
         if (/\.m3u8(\?|$)/i.test(hls)) {
-          const swap = yield nexusMuxedSwap(hls, servedLang, signal);
-          if (swap) {
-            url = swap.url;
-            quality = swap.quality;
+          const master = yield nexusMaster(hls, signal);
+          if (master) {
+            const variants = nexusVariants(master.text, servedLang);
+            if (variants.length) {
+              const best = variants[0];
+              const bestUrl = resolveUrl(master.finalUrl, best.uri);
+              const okBest = yield nexusPlaylistPlayable(bestUrl, master.readHeaders, signal);
+              if (okBest) {
+                const out = variants.map((v) => ({
+                  url: resolveUrl(master.finalUrl, v.uri),
+                  quality: v.quality
+                }));
+                console.log("[webflix] nexus : master explos\xE9 en " + out.length + " variante(s) (" + out.map((v) => v.quality).join(", ") + ")");
+                return { variants: out, lang: servedLang };
+              }
+            }
+            const swap = nexusMuxedSwapFrom(master, servedLang);
+            if (swap) {
+              console.log("[webflix] nexus : variante mux\xE9e servie d\xE8s la r\xE9solution (anti \xE9cran-noir, " + String(servedLang || "").toUpperCase() + ") : " + swap.url);
+              return { url: swap.url, quality: swap.quality, lang: servedLang };
+            }
+            return { url: master.finalUrl, quality: bestHlsQuality(master.text), lang: servedLang };
           }
         }
-        return { url, quality, lang: servedLang };
+        return { url: hls, quality: "", lang: servedLang };
       } catch (e) {
         return null;
       }
     });
   }
-  function nexusMuxedSwap(masterUrl, language, signal) {
+  function pushNexus(ctx, nx, langKey) {
+    const langKey2 = nx.lang === "vostfr" ? "vostfr" : langKey;
+    if (nx.variants && nx.variants.length) {
+      let best = "";
+      for (const v of nx.variants) {
+        push2(ctx, nexusStream(ctx, { url: v.url, quality: v.quality, lang: nx.lang }, langKey2));
+        if (!best || qualityRank(v.quality) < qualityRank(best)) best = v.quality;
+      }
+      return best;
+    }
+    push2(ctx, nexusStream(ctx, nx, langKey2));
+    return nx.quality || "Auto (HLS)";
+  }
+  function push2(ctx, st) {
+    ctx.push(st);
+  }
+  function nexusMaster(masterUrl, signal) {
     return __async(this, null, function* () {
       const readHeaders = {
         Referer: MOVIEZ_ORIGIN + "/",
         "User-Agent": HEADERS2["User-Agent"],
         Accept: "*/*"
       };
-      let masterText = "";
-      let finalUrl = masterUrl;
       try {
         const m = yield fetchText(masterUrl, {
           timeout: 3500,
           headers: readHeaders,
           signal
         });
-        masterText = String(m && m.text || "");
-        finalUrl = m && m.finalUrl || masterUrl;
+        const text = String(m && m.text || "");
+        if (text.indexOf("#EXTM3U") === -1) return null;
+        return { text, finalUrl: m && m.finalUrl || masterUrl, readHeaders };
       } catch (e) {
         return null;
       }
-      if (masterText.indexOf("#EXTM3U") === -1) return null;
-      const swapUri = muxedVariantUrl(masterText, String(language || "").toUpperCase());
-      if (!swapUri) return null;
-      const muxUrl = resolveUrl(finalUrl, swapUri);
+    });
+  }
+  function nexusPlaylistPlayable(url, readHeaders, signal) {
+    return __async(this, null, function* () {
       try {
-        const v = yield fetchText(muxUrl, {
+        const v = yield fetchText(url, {
           timeout: 2500,
           headers: readHeaders,
           signal
         });
-        if (!/#EXTINF/i.test(String(v && v.text || ""))) return null;
+        return /#EXTINF/i.test(String(v && v.text || ""));
       } catch (e) {
-        return null;
+        return false;
       }
-      console.log("[webflix] nexus : variante mux\xE9e servie d\xE8s la r\xE9solution (anti \xE9cran-noir, " + String(language || "").toUpperCase() + ") : " + muxUrl);
-      return { url: muxUrl, quality: bestHlsQuality(masterText) };
     });
+  }
+  function nexusVariants(masterText, language) {
+    const t = String(masterText || "");
+    if (t.indexOf("#EXTM3U") === -1) return [];
+    const lang = String(language || "").toUpperCase();
+    const isVf = lang.indexOf("VF") === 0 && lang.indexOf("VOST") !== 0;
+    const hasMedia = /#EXT-X-MEDIA/i.test(t);
+    let frSuffix = "";
+    if (isVf && hasMedia) {
+      const reMedia = /#EXT-X-MEDIA:[^\r\n]*/gi;
+      let m2;
+      while ((m2 = reMedia.exec(t)) !== null) {
+        const line = m2[0];
+        const um = /URI="([^"]+)"/i.exec(line);
+        const sm = um ? /index-(a\d+)\.m3u8/i.exec(um[1]) : null;
+        if (!sm) continue;
+        const lm = /LANGUAGE="([^"]*)"/i.exec(line);
+        const raw = lm ? lm[1] : (/NAME="([^"]*)"/i.exec(line) || [])[1] || "";
+        const key = String(raw).trim().toLowerCase().split(/[\s(-]/)[0];
+        if (/^(fr|fra|fre|français|francais|french)$/.test(key)) {
+          frSuffix = sm[1];
+          break;
+        }
+      }
+      if (!frSuffix) return [];
+    }
+    const out = [];
+    const reVar = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n([^\r\n#][^\r\n]*)/gi;
+    let m;
+    while ((m = reVar.exec(t)) !== null) {
+      const attrs = m[1];
+      const uri = m[2].trim();
+      const rm = /RESOLUTION=(\d+)x(\d+)/i.exec(attrs);
+      if (!rm) continue;
+      const tier = standardHeight(parseInt(rm[1], 10), parseInt(rm[2], 10));
+      if (!tier) continue;
+      if (isVf && hasMedia) {
+        if (!/index-v\d+-a\d+\.m3u8/i.test(uri)) return [];
+        out.push({ uri: uri.replace(/-a\d+\.m3u8/i, "-" + frSuffix + ".m3u8"), quality: resolutionLabel(tier) });
+      } else if (!hasMedia) {
+        out.push({ uri, quality: resolutionLabel(tier) });
+      } else {
+        return [];
+      }
+    }
+    if (!out.length) return [];
+    const seenQ = {};
+    const uniq = out.filter((v) => seenQ[v.quality] ? false : seenQ[v.quality] = true);
+    uniq.sort((a, b) => qualityRank(a.quality) - qualityRank(b.quality));
+    return uniq.slice(0, 3);
+  }
+  function nexusMuxedSwapFrom(master, language) {
+    const swapUri = muxedVariantUrl(master.text, String(language || "").toUpperCase());
+    if (!swapUri) return null;
+    return { url: resolveUrl(master.finalUrl, swapUri), quality: bestHlsQuality(master.text) };
   }
   function nexusStream(ctx, nx, langKey) {
     return makeStream({
@@ -4527,7 +4629,7 @@ var __provider = (() => {
   }
   function extractStreamUrls(html, baseUrl) {
     const out = [];
-    const push2 = (u) => {
+    const push22 = (u) => {
       if (!u || typeof u !== "string") return;
       const clean = u.replace(/\\\//g, "/").replace(/\\u0026/g, "&");
       if (/^https?:\/\//i.test(clean) && out.indexOf(clean) === -1) out.push(clean);
@@ -4536,7 +4638,7 @@ var __provider = (() => {
     try {
       const m = raw.match(/videoUrl\s*=\s*(?:window\.ZenixCdnDirect\s*\?\s*window\.ZenixCdnDirect\.prepare\s*\(\s*)?"([^"]{20,600})"/i);
       if (m && /^https?:\/\//i.test(m[1].replace(/\\u0026/g, "&").replace(/\\\//g, "/"))) {
-        push2(m[1]);
+        push22(m[1]);
       }
     } catch (e) {
     }
@@ -4548,7 +4650,7 @@ var __provider = (() => {
         const end = raw.indexOf('"', idx);
         if (start !== -1 && end !== -1 && end > idx + marker.length && end - start < 600) {
           const cleaned = raw.slice(start + 1, end).replace(/\\u0026/g, "&").replace(/\\\//g, "/");
-          if (/^https:\/\/stream\.fluxora\.sbs\/v1\/[^\s"]+$/.test(cleaned)) push2(cleaned);
+          if (/^https:\/\/stream\.fluxora\.sbs\/v1\/[^\s"]+$/.test(cleaned)) push22(cleaned);
         }
         idx = raw.indexOf(marker, idx + 1);
       }
@@ -4560,7 +4662,7 @@ var __provider = (() => {
       while ((m = arrRe.exec(raw)) !== null) {
         const qRe = /"((?:[^"\\]|\\.)*)"/g;
         let q;
-        while ((q = qRe.exec(m[1])) !== null) push2(q[1]);
+        while ((q = qRe.exec(m[1])) !== null) push22(q[1]);
       }
     } catch (e) {
     }
@@ -4571,9 +4673,9 @@ var __provider = (() => {
         const src = m[1];
         if (src && !/^about:blank/i.test(src) && !/^javascript:/i.test(src) && !/^data:/i.test(src)) {
           try {
-            push2(resolveUrl(baseUrl, src));
+            push22(resolveUrl(baseUrl, src));
           } catch (e) {
-            push2(src);
+            push22(src);
           }
         }
       }
@@ -4581,7 +4683,7 @@ var __provider = (() => {
     }
     try {
       const loose = raw.match(/https?:\/\/[^"'\\\s]+\.(?:m3u8|mp4)[^"'\\\s]*/gi) || [];
-      for (const u of loose) push2(u);
+      for (const u of loose) push22(u);
     } catch (e) {
     }
     return out;
@@ -4675,17 +4777,20 @@ var __provider = (() => {
       }
     });
   }
-  function directStream(ctx, url, source, langKey, episode, apiQuality) {
+  function buildDirectStream(ctx, url, source, langKey, episode, apiQuality, size, deferProbe) {
     return __async(this, null, function* () {
       const kind = /\.m3u8(\?|$)/i.test(String(url || "")) ? "HLS" : "MP4";
-      let quality = realQuality(apiQuality, url, kind);
-      if (quality === "Direct") {
+      let quality = realQuality(apiQuality, url, kind, size);
+      const api = String(apiQuality || "").trim();
+      const fromSize = !qualityFromUrl(url) && !(api && !/^unknown$/i.test(api)) && sizeToGb(size) > 0;
+      const provisional = fromSize || quality === "Direct";
+      if (quality === "Direct" && !deferProbe) {
         const softMs = ctx.cfg && Number(ctx.cfg.softMs) > 0 ? Number(ctx.cfg.softMs) : 1e4;
         const softLeftMs = Math.max(0, softMs - (Date.now() - (ctx.started || Date.now())));
         const q = yield directMp4Quality(url, { softLeftMs });
         if (q) quality = q;
       }
-      return makeStream({
+      const stream = makeStream({
         title: composeTitle({
           site: "Webflix",
           episode: parseInt(episode, 10) || 0,
@@ -4703,15 +4808,34 @@ var __provider = (() => {
           Referer: SITE + "/"
         },
         _langKey: langKey,
-        _site: "webflix"
+        _site: "webflix",
+        size
       });
+      return { stream, provisional };
     });
   }
-  function realQuality(apiQuality, url, kind) {
+  function directStream(ctx, url, source, langKey, episode, apiQuality, size) {
+    return __async(this, null, function* () {
+      const ds = yield buildDirectStream(ctx, url, source, langKey, episode, apiQuality, size, false);
+      return ds.stream;
+    });
+  }
+  function sizeToGb(size) {
+    const m = String(size || "").match(/([\d.,]+)\s*(TB|GB|MB|KB)/i);
+    if (!m) return 0;
+    const v = parseFloat(String(m[1]).replace(",", "."));
+    if (!(v > 0)) return 0;
+    const unit = m[2].toUpperCase();
+    return unit === "TB" ? v * 1024 : unit === "GB" ? v : unit === "MB" ? v / 1024 : v / 1048576;
+  }
+  function realQuality(apiQuality, url, kind, size) {
     const api = String(apiQuality || "").trim();
     if (api && !/^unknown$/i.test(api)) return api;
     const q = qualityFromUrl(url);
     if (q) return q;
+    const gb = sizeToGb(size);
+    if (gb >= 3) return "1080p";
+    if (gb > 0) return "720p";
     return kind === "HLS" ? "Auto (HLS)" : "Direct";
   }
   var SITE, HEADERS2, TIMEOUTS, MAX_EMBEDS_TO_TRY, MAX_STREAMS, FLUXORA_ORIGIN, MOVIEZ_ORIGIN, FREMBED_HOSTS, webflix_default;

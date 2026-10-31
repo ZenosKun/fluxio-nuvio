@@ -1,7 +1,7 @@
 {
     "name": "fluxio-nuvio",
-    "version": "3.1.17",
-    "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (10 s), tri par qualité, routage par type de contenu, anti-écran-noir uqload au niveau du résolveur (v3.1.14), qualité FastFlux lue malgré la chaîne de redirections 3 sauts (v3.1.17)",
+    "version": "3.1.18",
+    "description": "Fluxio — plugin Nuvio multi-sources FR : orchestration par vagues, anti-blocage (10 s), tri par qualité, routage par type de contenu, anti-écran-noir uqload au niveau du résolveur (v3.1.14), qualité FastFlux lue malgré la chaîne de redirections 3 sauts (v3.1.18) ; qualité FastFlux CONSTANTE par heuristique taille (méthode Gowaru), raffinement moov après coup, master Nexus éclaté en une entrée par variante (1080p/720p/360p) et champ size passé à Nuvio (v3.1.18)",
     "main": "src/plugin/index.js",
     "scripts": {
         "build": "node build.js",

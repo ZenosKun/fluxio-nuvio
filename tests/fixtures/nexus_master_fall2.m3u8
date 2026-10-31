@@ -1,0 +1,14 @@
+#EXTM3U
+
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="Français",LANGUAGE="fr",AUTOSELECT=YES,DEFAULT=YES,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/index-a1.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="English",LANGUAGE="en",AUTOSELECT=NO,DEFAULT=NO,CHANNELS="1",URI="https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/index-a2.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6"
+
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=587356,RESOLUTION=664x360,FRAME-RATE=23.974,CODECS="avc1.64001e,mp4a.40.2",VIDEO-RANGE=SDR,AUDIO="audio0"
+https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/index-v1-a2.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1526892,RESOLUTION=1328x720,FRAME-RATE=23.974,CODECS="avc1.640020,mp4a.40.2",VIDEO-RANGE=SDR,AUDIO="audio0"
+https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_n/index-v1-a2.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6
+#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3848585,RESOLUTION=1920x1040,FRAME-RATE=23.974,CODECS="avc1.640028,mp4a.40.2",VIDEO-RANGE=SDR,AUDIO="audio0"
+https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_h/index-v1-a2.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6
+
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=72664,RESOLUTION=664x360,CODECS="avc1.64001e",URI="https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_l/iframes-v1-a2.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6",VIDEO-RANGE=SDR
+#EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=184703,RESOLUTION=1328x720,CODECS="avc1.640020",URI="https://strm8.uqload.vc/hls2/02/05845/dp4lgyiy4he6_n/iframes-v1-a2.m3u8?t=FeDpopc_cfoGexqC6MDBykGZpW5SGj3W5_id0bxo6ic&s=1793281356&e=14400&v=&i=0.0&sp=0&fr=dp4lgyiy4he6",VIDEO-RANGE=SDR

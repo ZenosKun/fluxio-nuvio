@@ -11,7 +11,7 @@ import { makeStream, finalizeStreams, composeTitle, qualityFromUrl, qualityRank,
 import { bestHlsQuality, muxedVariantUrl } from '../src/core/verify.js';
 import { readConfig } from '../src/utils/settings.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
-import { extractStreamUrls, nexusQuery, moviezToken, moviezLang } from '../src/sources/webflix.js';
+import { extractStreamUrls, nexusQuery, moviezToken, moviezLang, realQuality, sizeToGb, nexusVariants } from '../src/sources/webflix.js';
 import { parseSearchResponse, parseNewsId } from '../src/sources/dle-common.js';
 
 let ok = 0;
@@ -937,6 +937,90 @@ t('bflixLangKey : playlist annonce en seul, original fr → la playlist gagne �
 t('bflixLangKey : NAME français sans LANGUAGE reconnu via le parseur HLS (info [])', () => {
     // le repli NAME= est côté hlsAudioLangs (réseau) ; ici on vérifie [] only
     assert.strictEqual(bflixLangKey([], false, ''), 'vo');
+});
+
+/* ── v3.1.18 : heuristique TAILLE Gowaru — qualité FastFlux CONSTANTE ────── */
+/* Bug utilisateur : « quand y a un flux FastFlux ça n'affiche pas la qualité,
+ * alors qu'avec Gowaru ça s'affiche constamment ». La méthode Gowaru
+ * (qualityFromApi, src/webflix/extractor.js) : champ API parlant, sinon
+ * TAILLE (≥ 3 Go → 1080p, sinon taille connue → 720p/« HD ») — zéro sonde,
+ * zéro timeout. Notre sonde moov/tkhd devient un RAFFINEMENT après coup. */
+t('sizeToGb : formats de l’API (« 1.27 GB », « 512 MB », « 1.5 TB », bruit)', () => {
+    assert.ok(Math.abs(sizeToGb('1.27 GB') - 1.27) < 1e-9);
+    assert.ok(Math.abs(sizeToGb('3.55 GB') - 3.55) < 1e-9);
+    assert.ok(Math.abs(sizeToGb('512 MB') - 0.5) < 0.001);
+    assert.ok(Math.abs(sizeToGb('1.5 TB') - 1536) < 1e-9);
+    assert.strictEqual(sizeToGb('Unknown'), 0);
+    assert.strictEqual(sizeToGb(''), 0);
+    assert.strictEqual(sizeToGb(undefined), 0);
+    assert.strictEqual(sizeToGb('na 42 zzz'), 0);
+});
+t('realQuality v3.1.18 : FastFlux 1.27 Go (Fall 2) → « 720p » SANS aucune sonde', () => {
+    assert.strictEqual(
+        realQuality('Unknown', 'https://cdn80.zen-blk.store/movies/Fall-2-HD-2026.mp4', 'MP4', '1.27 GB'),
+        '720p'
+    );
+});
+t('realQuality : ≥ 3 Go → « 1080p » (gowaru : MP4 FastFlux > 3 GB = 1080p typique)', () => {
+    assert.strictEqual(realQuality('Unknown', 'https://cdn80.zen-blk.store/movies/X.mp4', 'MP4', '3.55 GB'), '1080p');
+    assert.strictEqual(realQuality('Unknown', 'https://cdn80.zen-blk.store/movies/X.mp4', 'MP4', '1.2 TB'), '1080p');
+    // épisode série (payload S-E sans size chez discovery) : taille absente
+    assert.strictEqual(realQuality('Unknown', 'https://cdn80.zen-blk.store/series/VF/X/S01/X-S01-E01.mp4', 'MP4', undefined), 'Direct');
+});
+t('realQuality : champ API parlant gagne sur tout, « Unknown » ignoré', () => {
+    assert.strictEqual(realQuality('1080p', 'https://x/m.mp4', 'MP4', '1.27 GB'), '1080p');
+    assert.strictEqual(realQuality('4K', 'https://x/m.mp4', 'MP4', '9 GB'), '4K');
+});
+t('realQuality : motif URL gagne sur la taille', () => {
+    assert.strictEqual(realQuality('Unknown', 'https://cdn/x/1080/movie.mp4', 'MP4', '1.27 GB'), '1080p');
+});
+t('realQuality : taille inconnue → libellé technique (la sonde raffinera)', () => {
+    assert.strictEqual(realQuality('Unknown', 'https://cdn/x/master.m3u8', 'HLS', undefined), 'Auto (HLS)');
+    assert.strictEqual(realQuality('Unknown', 'https://cdn/x/film.mp4', 'MP4', ''), 'Direct');
+});
+
+/* ── v3.1.18 : expansion du master Nexus (toutes les qualités, gowaru expand) ── */
+t('nexusVariants : master VF réel Fall 2 → 3 variantes MUXÉES fr (1080p/720p/360p)', () => {
+    const v = nexusVariants(NEXUS_FALL2_MASTER, 'vf');
+    assert.deepStrictEqual(v.map(x => x.quality), ['1080p', '720p', '360p']);
+    assert.ok(v[0].uri.indexOf('dp4lgyiy4he6_h/index-v1-a1.m3u8') !== -1, '1080p → index-v1-a1 (fr)');
+    assert.ok(v[1].uri.indexOf('dp4lgyiy4he6_n/index-v1-a1.m3u8') !== -1, '720p → index-v1-a1');
+    assert.ok(v[2].uri.indexOf('dp4lgyiy4he6_l/index-v1-a1.m3u8') !== -1, '360p → index-v1-a1');
+    assert.ok(v[0].uri.indexOf('?t=TOK') !== -1, 'token préservée');
+});
+t('nexusVariants : master muxé simple (VOSTFR) → variantes brutes, URI inchangées', () => {
+    const vostMaster = NEXUS_FALL2_MASTER
+        .replace(/#EXT-X-MEDIA[^\r\n]*\r?\n/g, '')
+        .replace(/,AUDIO="audio0"/g, '');
+    const v = nexusVariants(vostMaster, 'vostfr');
+    assert.deepStrictEqual(v.map(x => x.quality), ['1080p', '720p', '360p']);
+    assert.ok(v[0].uri.indexOf('index-v1-a2.m3u8') !== -1);
+});
+t('nexusVariants : pistes séparées hors VF (VO/VOSTFR) → [] (seul le swap muxé est sûr)', () => {
+    assert.deepStrictEqual(nexusVariants(NEXUS_FALL2_MASTER, 'vo'), []);
+    assert.deepStrictEqual(nexusVariants(NEXUS_FALL2_MASTER, 'vostfr'), []);
+});
+t('nexusVariants : motif non-uqload avec pistes séparées → [] (on n’invente rien)', () => {
+    const weird = NEXUS_FALL2_MASTER.replace(/index-v1-a2\.m3u8/g, 'variants/enc-v1.m3u8');
+    assert.deepStrictEqual(nexusVariants(weird, 'vf'), []);
+});
+t('nexusVariants : sans #EXTM3U / page HTML → []', () => {
+    assert.deepStrictEqual(nexusVariants('', 'vf'), []);
+    assert.deepStrictEqual(nexusVariants('<html>404</html>', 'vf'), []);
+});
+
+/* ── v3.1.18 : champ size traversé jusqu’au flux Nuvio ──────────────────── */
+t('makeStream/finalizeStreams : size « 1.27 GB » atteint le panneau Nuvio', () => {
+    const st = makeStream({ title: 'X', url: 'https://a/b.mp4', quality: '720p', language: 'VF', _langKey: 'vf', size: '1.27 GB' });
+    assert.strictEqual(st.size, '1.27 GB');
+    const out = finalizeStreams([st], CFG);
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0].size, '1.27 GB');
+});
+t('finalizeStreams : flux sans size → pas de champ (schéma Nuvio inchangé)', () => {
+    const out = finalizeStreams([makeStream({ title: 'Y', url: 'https://a/c.mp4', quality: '720p', _langKey: 'vf' })], CFG);
+    assert.strictEqual(out.length, 1);
+    assert.ok(!('size' in out[0]));
 });
 
 console.log(`\nRésultat : ${ok} OK, ${ko} échec(s)`);

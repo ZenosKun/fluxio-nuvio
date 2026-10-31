@@ -11,6 +11,9 @@
  *   3. Nexus     : lecteur « Nexus » du site (v3.1.15, api.moviez.ac) —
  *                  master HLS multi-variantes jusqu'à 1080p AVC ; la voie
  *                  qualité là où FastFlux plafonne souvent au 720p
+ *                  v3.1.18 : le master est EXPLOSÉ en une entrée par
+ *                  variante (1080p/720p/360p) — toutes les qualités du site
+ *                  s'affichent, comme chez Gowaru (expandStreamQualities).
  *   4. Embeds TMDB-only : Frembed (page → iframes → extracteurs d'hôtes
  *      locaux), Zenix/fluxora (flow SID/play dédié), Heiwastream, WWEmbed.
  *
@@ -21,9 +24,9 @@
 
 import { fetchText as coreFetchText, fetchJson, fetchBytes, resolveUrl } from '../utils/http.js';
 import { resolveEmbeds, providerFromEmbedUrl } from '../hosts/index.js';
-import { makeStream, composeTitle, qualityFromUrl } from '../core/stream.js';
+import { makeStream, composeTitle, qualityFromUrl, qualityRank, resolutionLabel } from '../core/stream.js';
 import { bestHlsQuality, muxedVariantUrl } from '../core/verify.js';
-import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, mp4MoovStartOffset } from '../utils/mp4.js';
+import { mp4MaxHeight, mp4QualityLabel, bytesLookHtml, mp4MoovStartOffset, standardHeight } from '../utils/mp4.js';
 
 const SITE = 'https://webflix.art';
 
@@ -84,14 +87,31 @@ async function run(ctx) {
     //    (404 vérifié en live = panneau « lien ne fonctionne pas » chez
     //    l'utilisateur). La VOSTFR passe par le flow ZENIX réel ci-dessous
     //    (endpoints sources + play avec lang=vostfr — la voie du site).
+    //
+    //    v3.1.18 — PUSH IMMÉDIAT, raffinement APRÈS Nexus : le libellé vient
+    //    de l'heuristique TAILLE de Gowaru (qualityFromApi : champ API parlant,
+    //    sinon ≥ 3 Go → 1080p, sinon taille connue → 720p) — zéro sonde avant
+    //    le push. Avant, la sonde moov/tkhd (jusqu'à 10 s) tournait AVANT le
+    //    push : l'échéance douce (10 s, stopper.goodEnough dès 1 flux) était
+    //    mangée et resolveNexus avortait à son premier shouldStop() — le flux
+    //    1080p Nexus n'arrivait JAMAIS (bug « une seule entrée 720p »). Et
+    //    quand la sonde expirait sur device (chaîne 3 sauts), le label restait
+    //    « Direct » (bug « qualité jamais affichée ») — Gowaru, lui, affiche
+    //    « constamment » la qualité parce qu'il ne sonde JAMAIS pour le
+    //    libellé initial. La sonde moov/tkhd (exacte : 4K réel là où la
+    //    taille disait 1080p) devient un RAFFINEMENT best-effort exécuté
+    //    après Nexus (cf. refineDirectQuality).
     let directPushed = false; // un flux direct (VF/VO…) est déjà poussé
+    let ffStream = null;      // flux direct à raffiner (moov/tkhd) après Nexus
     if (isTv) {
         const disc = await discovery(ctx.tmdbId, cfg, signal);
         const entry = disc && disc[s + '-' + e];
         if (entry && entry.url && typeof entry.url === 'string') {
             console.log('[webflix] discovery direct S' + s + 'E' + e);
             const langKey = await langKeyFor(ctx, entry.url, entry.language);
-            push(await directStream(ctx, entry.url, 'Discovery', langKey, e, entry.quality));
+            const ds = await buildDirectStream(ctx, entry.url, 'Discovery', langKey, e, entry.quality, entry.size, true);
+            push(ds.stream);
+            ffStream = ds.stream;
             directPushed = true;
         }
         if (!directPushed) {
@@ -99,7 +119,9 @@ async function run(ctx) {
             if (ff && ff.url) {
                 console.log('[webflix] fastflux direct S' + s + 'E' + e);
                 const langKey = await langKeyFor(ctx, ff.url, ff.language);
-                push(await directStream(ctx, ff.url, 'FastFlux', langKey, e, ff.quality));
+                const ds = await buildDirectStream(ctx, ff.url, 'FastFlux', langKey, e, ff.quality, ff.size, true);
+                push(ds.stream);
+                ffStream = ds.stream;
                 directPushed = true;
             }
         }
@@ -108,7 +130,9 @@ async function run(ctx) {
         if (ff && ff.url) {
             console.log('[webflix] fastflux direct film');
             const langKey = await langKeyFor(ctx, ff.url, ff.language);
-            push(await directStream(ctx, ff.url, 'FastFlux', langKey, 0, ff.quality));
+            const ds = await buildDirectStream(ctx, ff.url, 'FastFlux', langKey, 0, ff.quality, ff.size, true);
+            push(ds.stream);
+            ffStream = ds.stream;
             directPushed = true;
         }
     }
@@ -116,12 +140,30 @@ async function run(ctx) {
     // 2. Nexus VF (v3.1.15) — le meilleur lecteur du site, résolu par
     //    tmdbId : master multi-variantes jusqu'à 1080p AVC (FastFlux plafonne
     //    souvent au 720p). FinalizeStreams classe ensuite 1080p devant 720p.
+    //    v3.1.18 : arrive DÈS le push FastFlux (plus de sonde avant) et sert
+    //    UNE ENTRÉE PAR VARIANTE (1080p/720p/360p) — « toutes les qualités ».
     if (!shouldStop()) {
         const nx = await resolveNexus(ctx, 'vf');
         if (nx) {
-            console.log('[webflix] nexus VF direct (' + (nx.quality || 'Auto (HLS)') + ')');
-            push(nexusStream(ctx, nx, 'vf'));
+            const pushedNexus = pushNexus(ctx, nx, 'vf');
+            console.log('[webflix] nexus VF direct (' + (pushedNexus || 'Auto (HLS)') + ')');
             directPushed = true;
+        }
+    }
+
+    // 2bis. Raffinement qualité du flux direct (v3.1.18) : la sonde moov/
+    //    tkhd — EXACTE (lit la vraie résolution, 4K inclus) — remplace
+    //    l'heuristique taille si elle aboutit. APRÈS Nexus : elle ne doit
+    //    JAMAIS retarder ni empêcher un push (causes racines v3.1.17). Le
+    //    label heuristique (720p/1080p) reste si la sonde expire sur device :
+    //    mieux que « Direct », et Gowaru fait pareil (constance).
+    if (ffStream && !shouldStop()) {
+        const softMs = cfg && Number(cfg.softMs) > 0 ? Number(cfg.softMs) : 10000;
+        const softLeftMs = Math.max(0, softMs - (Date.now() - (ctx.started || Date.now())));
+        const q = await directMp4Quality(ffStream.url, { softLeftMs: softLeftMs });
+        if (q && q !== ffStream.quality) {
+            console.log('[webflix] qualité directe raffinée (moov/tkhd) : ' + ffStream.quality + ' → ' + q);
+            ffStream.quality = q;
         }
     }
 
@@ -133,8 +175,8 @@ async function run(ctx) {
     if (!prefIsVf && !shouldStop()) {
         const nx = await resolveNexus(ctx, 'vostfr');
         if (nx) {
-            console.log('[webflix] nexus ' + nx.lang + ' direct (' + (nx.quality || 'Auto (HLS)') + ')');
-            push(nexusStream(ctx, nx, nx.lang === 'vostfr' ? 'vostfr' : 'vf'));
+            const pushedNexus = pushNexus(ctx, nx, nx.lang === 'vostfr' ? 'vostfr' : 'vf');
+            console.log('[webflix] nexus ' + nx.lang + ' direct (' + (pushedNexus || 'Auto (HLS)') + ')');
         }
     }
 
@@ -309,65 +351,185 @@ async function resolveNexus(ctx, langKey) {
         if (!/^https:\/\//i.test(hls) || !/\.m3u8(\?|$)|\.mp4(\?|$)/i.test(hls)) return null;
         if (shouldStop()) return null;
 
-        // 4. VF : le master déclare des pistes audio séparées (EXT-X-MEDIA) →
-        //    variante muxée française DÈS la résolution (anti écran-noir).
-        let url = hls;
-        let quality = '';
+        // 4. Master lu UNE fois (v3.1.18) : expansion en une entrée par
+        //    variante (« toutes les qualités », méthode Gowaru), repli variante
+        //    muxée unique (v3.1.14), repli master brut.
         if (/\.m3u8(\?|$)/i.test(hls)) {
-            const swap = await nexusMuxedSwap(hls, servedLang, signal);
-            if (swap) {
-                url = swap.url;
-                quality = swap.quality;
+            const master = await nexusMaster(hls, signal);
+            if (master) {
+                // 4a. VF : variantes MUXÉES françaises (anti écran-noir) ;
+                //     VOSTFR : variantes brutes du master muxé simple.
+                const variants = nexusVariants(master.text, servedLang);
+                if (variants.length) {
+                    const best = variants[0]; // triée meilleure d'abord
+                    const bestUrl = resolveUrl(master.finalUrl, best.uri);
+                    // Une seule validation (la meilleure) : même coût que le
+                    // swap v3.1.14 ; les suivantes (même famille/CDN) seront
+                    // tranchées par la sonde de vérification, qui RETIRE un
+                    // lien prouvé mort au lieu d'afficher un panneau d'erreur.
+                    const okBest = await nexusPlaylistPlayable(bestUrl, master.readHeaders, signal);
+                    if (okBest) {
+                        const out = variants.map(v => ({
+                            url: resolveUrl(master.finalUrl, v.uri),
+                            quality: v.quality,
+                        }));
+                        console.log('[webflix] nexus : master explosé en ' + out.length +
+                            ' variante(s) (' + out.map(v => v.quality).join(', ') + ')');
+                        return { variants: out, lang: servedLang };
+                    }
+                }
+                // 4b. Repli v3.1.14 : UNE variante muxée (motif non reconnu,
+                //     validation échouée, pistes séparées non-VF…).
+                const swap = nexusMuxedSwapFrom(master, servedLang);
+                if (swap) {
+                    console.log('[webflix] nexus : variante muxée servie dès la résolution (anti écran-noir, ' +
+                        String(servedLang || '').toUpperCase() + ') : ' + swap.url);
+                    return { url: swap.url, quality: swap.quality, lang: servedLang };
+                }
+                // 4c. Master brut (annonce sa meilleure variante).
+                return { url: master.finalUrl, quality: bestHlsQuality(master.text), lang: servedLang };
             }
         }
-        return { url: url, quality: quality, lang: servedLang };
+        return { url: hls, quality: '', lang: servedLang };
     } catch (e) {
         return null; // lecteur indisponible pour ce titre : FastFlux/embeds suffisent
     }
 }
 
-/** Échange master → variante muxée de la langue (même contrat que
- *  uqloadMuxedSwap, hosts/index.js — le master Nexus est de la même famille
- *  uqload : EXT-X-MEDIA fr/en + variantes index-vN-aN.m3u8). Conservateur :
- *  master conservé au moindre doute. @returns {Promise<{url,quality}|null>} */
-async function nexusMuxedSwap(masterUrl, language, signal) {
+/** Poussée des flux Nexus (1..N variantes) — renvoie le libellé de qualité
+ *  de la MEILLEURE entrée poussée (pour le log). */
+function pushNexus(ctx, nx, langKey) {
+    const langKey2 = nx.lang === 'vostfr' ? 'vostfr' : langKey;
+    if (nx.variants && nx.variants.length) {
+        let best = '';
+        for (const v of nx.variants) {
+            push2(ctx, nexusStream(ctx, { url: v.url, quality: v.quality, lang: nx.lang }, langKey2));
+            if (!best || qualityRank(v.quality) < qualityRank(best)) best = v.quality;
+        }
+        return best;
+    }
+    push2(ctx, nexusStream(ctx, nx, langKey2));
+    return nx.quality || 'Auto (HLS)';
+}
+
+/** push du ctx, isolé pour la lisibilité (les sources reçoivent push en ctx). */
+function push2(ctx, st) {
+    ctx.push(st);
+}
+
+/** Lecture du master Nexus (une seule requête, v3.1.18 — avant : le master
+ *  était relu par le swap puis encore par la sonde).
+ *  @returns {Promise<{text,finalUrl,readHeaders}|null>} */
+async function nexusMaster(masterUrl, signal) {
     const readHeaders = {
         Referer: MOVIEZ_ORIGIN + '/',
         'User-Agent': HEADERS['User-Agent'],
         Accept: '*/*',
     };
-    let masterText = '';
-    let finalUrl = masterUrl;
     try {
         const m = await coreFetchText(masterUrl, {
             timeout: 3500,
             headers: readHeaders,
             signal: signal,
         });
-        masterText = String((m && m.text) || '');
-        finalUrl = (m && m.finalUrl) || masterUrl;
+        const text = String((m && m.text) || '');
+        if (text.indexOf('#EXTM3U') === -1) return null;
+        return { text: text, finalUrl: (m && m.finalUrl) || masterUrl, readHeaders: readHeaders };
     } catch (e) {
         return null; // master injoignable ici : la sonde tranchera sur le lien
     }
-    if (masterText.indexOf('#EXTM3U') === -1) return null;
-    const swapUri = muxedVariantUrl(masterText, String(language || '').toUpperCase());
-    if (!swapUri) return null;
-    const muxUrl = resolveUrl(finalUrl, swapUri);
+}
+
+/** Playlist média triviale ? (#EXTINF présent, pas une page HTML.) */
+async function nexusPlaylistPlayable(url, readHeaders, signal) {
     try {
-        const v = await coreFetchText(muxUrl, {
+        const v = await coreFetchText(url, {
             timeout: 2500,
             headers: readHeaders,
             signal: signal,
         });
-        // La variante doit être une playlist média triviale (segments) — pas
-        // une page HTML ni un master : c'est TOUT le but de l'échange.
-        if (!/#EXTINF/i.test(String((v && v.text) || ''))) return null;
+        return /#EXTINF/i.test(String((v && v.text) || ''));
     } catch (e) {
-        return null; // variante injoignable ici : master conservé
+        return false; // variante injoignable : repli swap/master
     }
-    console.log('[webflix] nexus : variante muxée servie dès la résolution (anti écran-noir, ' +
-        String(language || '').toUpperCase() + ') : ' + muxUrl);
-    return { url: muxUrl, quality: bestHlsQuality(masterText) };
+}
+
+/**
+ * Expansion du master en une entrée PAR VARIANTE (v3.1.18, port gowaru
+ * expandStreamQualities) — « affiche toutes les qualités trouvées » :
+ *
+ *   - VF + pistes séparées (EXT-X-MEDIA) : chaque variante index-vN-aN est
+ *     réécrite en variante MUXÉE française (suffixe aN de la langue « fr »
+ *     du master — même règle conservatrice que muxedVariantUrl). C'est le
+ *     remède anti écran-noir appliqué à CHAQUE qualité : 1080p/720p/360p
+ *     muxées fr, toutes jouables par tous les lecteurs.
+ *   - Master muxé simple (VOSTFR) : variantes brutes, une entrée chacune.
+ *   - Tout motif inattendu (variante non index-vN-aN avec pistes séparées,
+ *     absence de RESOLUTION…) → [] : le caller garde le comportement
+ *     conservateur (swap unique ou master).
+ *
+ * @returns {Array<{uri:string,quality:string}>} triée meilleure qualité d'abord
+ */
+export function nexusVariants(masterText, language) {
+    const t = String(masterText || '');
+    if (t.indexOf('#EXTM3U') === -1) return [];
+    const lang = String(language || '').toUpperCase();
+    const isVf = lang.indexOf('VF') === 0 && lang.indexOf('VOST') !== 0;
+    const hasMedia = /#EXT-X-MEDIA/i.test(t);
+
+    let frSuffix = '';
+    if (isVf && hasMedia) {
+        // Suffixe audio français (même mapping que muxedVariantUrl) :
+        // LANGUAGE="fr"/« fr-FR »/NAME « Français » → aN.
+        const reMedia = /#EXT-X-MEDIA:[^\r\n]*/gi;
+        let m2;
+        while ((m2 = reMedia.exec(t)) !== null) {
+            const line = m2[0];
+            const um = /URI="([^"]+)"/i.exec(line);
+            const sm = um ? /index-(a\d+)\.m3u8/i.exec(um[1]) : null;
+            if (!sm) continue;
+            const lm = /LANGUAGE="([^"]*)"/i.exec(line);
+            const raw = lm ? lm[1] : ((/NAME="([^"]*)"/i.exec(line) || [])[1] || '');
+            const key = String(raw).trim().toLowerCase().split(/[\s(-]/)[0];
+            if (/^(fr|fra|fre|français|francais|french)$/.test(key)) { frSuffix = sm[1]; break; }
+        }
+        if (!frSuffix) return []; // pistes séparées sans français identifiable
+    }
+
+    const out = [];
+    const reVar = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n([^\r\n#][^\r\n]*)/gi;
+    let m;
+    while ((m = reVar.exec(t)) !== null) {
+        const attrs = m[1];
+        const uri = m[2].trim();
+        const rm = /RESOLUTION=(\d+)x(\d+)/i.exec(attrs);
+        if (!rm) continue;
+        const tier = standardHeight(parseInt(rm[1], 10), parseInt(rm[2], 10));
+        if (!tier) continue;
+        if (isVf && hasMedia) {
+            if (!/index-v\d+-a\d+\.m3u8/i.test(uri)) return []; // on n'invente rien
+            out.push({ uri: uri.replace(/-a\d+\.m3u8/i, '-' + frSuffix + '.m3u8'), quality: resolutionLabel(tier) });
+        } else if (!hasMedia) {
+            out.push({ uri: uri, quality: resolutionLabel(tier) });
+        } else {
+            return []; // pistes séparées hors VF : seul le swap muxé est sûr
+        }
+    }
+    if (!out.length) return [];
+    // Dédup (2 variantes peuvent annoncer le même bucket) + tri meilleure d'abord.
+    const seenQ = {};
+    const uniq = out.filter(v => (seenQ[v.quality] ? false : (seenQ[v.quality] = true)));
+    uniq.sort((a, b) => qualityRank(a.quality) - qualityRank(b.quality));
+    return uniq.slice(0, 3); // 3 qualités max : le panel reste lisible
+}
+
+/** Échange master → variante muxée de la langue (v3.1.14, opère sur un master
+ *  DÉJÀ LU par nexusMaster — v3.1.18 : plus de relecture). Conservateur :
+ *  null au moindre doute. @returns {{url,quality}|null} */
+function nexusMuxedSwapFrom(master, language) {
+    const swapUri = muxedVariantUrl(master.text, String(language || '').toUpperCase());
+    if (!swapUri) return null;
+    return { url: resolveUrl(master.finalUrl, swapUri), quality: bestHlsQuality(master.text) };
 }
 
 /** Flux direct Nexus (HLS uqload-family). Referer moviez : contexte exact du
@@ -851,12 +1013,26 @@ export async function directMp4Quality(url, opts) {
  * (« Unknown » ignoré), sinon motif dans l'URL, sinon libellé technique —
  * v3.1.16 : un libellé générique sur un MP4 direct déclenche la lecture du
  * moov/tkhd (directMp4Quality) AVANT de retomber sur « Direct ».
+ * v3.1.18 : pour les flux directs FastFlux/Discovery (deferProbe), PLUS AUCUNE
+ * sonde avant le push — le libellé vient de l'heuristique taille de Gowaru
+ * (realQuality + size) et la sonde moov/tkhd devient un raffinement APRES
+ * Nexus (cf. run). Les embeds (deferProbe absent) gardent le comportement
+ * v3.1.16 (sonde inline avant push : leur qualité n'est lue nulle part ailleurs).
+ *
  * @param {string} apiQuality champ « quality » de l'API (peut être Unknown)
+ * @param {string} size champ « size » de l'API (« 1.27 GB », optionnel)
+ * @param {boolean} deferProbe true = push immédiat, sonde repoussée après coup
+ * @returns {Promise<{stream: object, provisional: boolean}>}
  */
-async function directStream(ctx, url, source, langKey, episode, apiQuality) {
+async function buildDirectStream(ctx, url, source, langKey, episode, apiQuality, size, deferProbe) {
     const kind = /\.m3u8(\?|$)/i.test(String(url || '')) ? 'HLS' : 'MP4';
-    let quality = realQuality(apiQuality, url, kind);
-    if (quality === 'Direct') {
+    let quality = realQuality(apiQuality, url, kind, size);
+    // provisional = le libellé peut encore monter en précision via la sonde
+    // moov/tkhd (heuristique taille → 4K réel possible ; « Direct » → tout).
+    const api = String(apiQuality || '').trim();
+    const fromSize = !qualityFromUrl(url) && !(api && !/^unknown$/i.test(api)) && sizeToGb(size) > 0;
+    const provisional = fromSize || quality === 'Direct';
+    if (quality === 'Direct' && !deferProbe) {
         // Part du flux dans l'échéance douce : la sonde qualité ne doit pas
         // pousser le rendu au-delà (v3.1.17 — 2 tentatives plafonnées).
         const softMs = ctx.cfg && Number(ctx.cfg.softMs) > 0 ? Number(ctx.cfg.softMs) : 10000;
@@ -864,7 +1040,7 @@ async function directStream(ctx, url, source, langKey, episode, apiQuality) {
         const q = await directMp4Quality(url, { softLeftMs: softLeftMs });
         if (q) quality = q;
     }
-    return makeStream({
+    const stream = makeStream({
         title: composeTitle({
             site: 'Webflix',
             episode: parseInt(episode, 10) || 0,
@@ -883,15 +1059,48 @@ async function directStream(ctx, url, source, langKey, episode, apiQuality) {
         },
         _langKey: langKey,
         _site: 'webflix',
+        size: size,
     });
+    return { stream: stream, provisional: provisional };
 }
 
-/** Qualité affichée : champ API parlant d'abord, sinon motif URL, sinon défaut. */
-function realQuality(apiQuality, url, kind) {
+/** Compatibilité : les embeds attendent le flux directement (v3.1.16). */
+async function directStream(ctx, url, source, langKey, episode, apiQuality, size) {
+    const ds = await buildDirectStream(ctx, url, source, langKey, episode, apiQuality, size, false);
+    return ds.stream;
+}
+
+/** Taille API (« 1.27 GB », « 3.55 GB », « 512 MB », « 1.5 TB ») → Go.
+ *  @returns {number} 0 = taille inconnue/illisible. */
+export function sizeToGb(size) {
+    const m = String(size || '').match(/([\d.,]+)\s*(TB|GB|MB|KB)/i);
+    if (!m) return 0;
+    const v = parseFloat(String(m[1]).replace(',', '.'));
+    if (!(v > 0)) return 0;
+    const unit = m[2].toUpperCase();
+    return unit === 'TB' ? v * 1024 : unit === 'GB' ? v : unit === 'MB' ? v / 1024 : v / 1048576;
+}
+
+/** Qualité affichée (v3.1.18, port gowaru qualityFromApi) :
+ *  1. champ API parlant (« 1080p »…) — « Unknown » ignoré ;
+ *  2. motif de résolution dans l'URL ;
+ *  3. heuristique TAILLE : ≥ 3 Go → 1080p, taille connue moindre → 720p
+ *     (gowaru : « les MP4 FastFlux > 3 GB sont du 1080p typique, sinon
+ *     HD→720p » — c'est ce qui rend son libellé CONSTANT : il ne dépend
+ *     d'aucun réseau. Un MP4 FastFlux de film HD pèse 1-2,5 Go, un 1080p
+ *     3-8 Go ; la sonde moov/tkhd raffine ensuite le cas limite) ;
+ *  4. taille inconnue → libellé technique (« Direct »/« Auto (HLS) »), la
+ *     sonde de raffinement ou la vérification prendra le relais si elle a
+ *     le temps.
+ *  Exportée pour les tests. */
+export function realQuality(apiQuality, url, kind, size) {
     const api = String(apiQuality || '').trim();
     if (api && !/^unknown$/i.test(api)) return api;
     const q = qualityFromUrl(url);
     if (q) return q;
+    const gb = sizeToGb(size);
+    if (gb >= 3) return '1080p';
+    if (gb > 0) return '720p';
     return kind === 'HLS' ? 'Auto (HLS)' : 'Direct';
 }
 

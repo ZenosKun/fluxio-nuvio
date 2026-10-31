@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { parseSearchResponse, parseNewsId, parseSeasonNumber } from '../src/sources/dle-common.js';
 import { parseEpisodesJson, extractHlsUrls, extractMovieHlsUrl } from '../src/sources/papadustream.js';
-import { extractStreamUrls } from '../src/sources/webflix.js';
+import { extractStreamUrls, nexusVariants } from '../src/sources/webflix.js';
 
 const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const read = name => {
@@ -192,6 +192,30 @@ console.log('\n— Papadustream : film + série + master playlist (fixtures rée
             assert.ok(master.indexOf('#EXTM3U') !== -1);
             const audioLines = master.split('\n').filter(l => l.indexOf('TYPE=AUDIO') !== -1);
             assert.ok(audioLines.length >= 1, 'aucune piste TYPE=AUDIO');
+        });
+    }
+}
+
+console.log('\n— Webflix : master Nexus RÉEL (Fall 2, capture live v3.1.18) —');
+
+{
+    const master = read('nexus_master_fall2.m3u8');
+    t('fixture présente (master strm8.uqload.vc multi-variantes)', () => {
+        assert.ok(master && master.indexOf('#EXTM3U') === 0);
+        assert.ok(master.indexOf('#EXT-X-MEDIA') !== -1);
+    });
+    if (master) {
+        t('nexusVariants sur master RÉEL : 3 variantes muxées fr, token live préservée', () => {
+            const variants = nexusVariants(master, 'vf');
+            assert.deepStrictEqual(variants.map(v => v.quality), ['1080p', '720p', '360p']);
+            assert.ok(variants.every(v => /index-v1-a1\.m3u8\?t=FeDpopc/.test(v.uri)),
+                'chaque variante réécrite en a1 (piste « Français » du master)');
+        });
+        t('les I-FRAME-STREAM-INF (URI inline) ne produisent PAS de variante', () => {
+            assert.strictEqual(nexusVariants(master, 'vf').length, 3);
+        });
+        t('profil VOSTFR sur ce master multi-pistes → aucun libellé inventé', () => {
+            assert.deepStrictEqual(nexusVariants(master, 'vostfr'), []);
         });
     }
 }
